@@ -12,6 +12,7 @@ from .data import available_fields_report, estimate_cost, resolve_snapshot
 from .html_render import render_receipt_html
 from .models import ALLOWED_WIDTHS, DEFAULT_FOOTER, DEFAULT_PRICING, SUPPORTED_LANGUAGES
 from .render import auto_brand, print_receipt, render_receipt
+from .share import build_share_payload, build_share_url, warn_if_large_share_url
 
 DEFAULT_CHAT_HTML_PATH = Path("/tmp/check-please.html")
 
@@ -72,7 +73,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--context-window", type=int)
     parser.add_argument("--receipt-seed")
     parser.add_argument("--show-fields", action="store_true", help="Print a JSON report of fields available from the selected source instead of a receipt.")
-    parser.add_argument("--output", choices=("text", "html"), default="text", help="Receipt output format. Use html for a printable browser page.")
+    parser.add_argument("--output", choices=("text", "html", "share-url"), default="text", help="Receipt output format. Use html for a printable browser page, or share-url for a zero-storage web link.")
+    parser.add_argument("--share-url", action="store_true", help="Shortcut for --output share-url.")
+    parser.add_argument("--share-base", help="Base URL for --output share-url. Defaults to CHECK_PLEASE_WEB_BASE or https://check-please.example.")
     parser.add_argument("--write", type=Path, help="Write the rendered receipt to a file and suppress stdout. Useful when a host tool would otherwise echo the receipt multiple times.")
     parser.add_argument("--write-html", type=Path, help="Also write a printable HTML receipt to a file while keeping the main output unchanged.")
     parser.add_argument("--chat-reply", action="store_true", help="Print a chat-ready reply: fenced receipt text plus a Printable HTML link. When no --write-html path is given, /tmp/check-please.html is used automatically.")
@@ -85,6 +88,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
+    if args.share_url:
+        args.output = "share-url"
 
     snapshot = resolve_snapshot(args)
     if args.provider:
@@ -105,6 +110,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     agent_tool = auto_brand(snapshot.provider, snapshot.source, args.agent_tool or args.brand or "auto")
     conversation_hint = args.conversation_summary or args.conversation_hint
     language = args.language
+    if args.output == "share-url":
+        payload = build_share_payload(snapshot, estimate, args.width, agent_tool, args.footer, args.footer_tone, conversation_hint, language)
+        receipt_text = build_share_url(payload, args.share_base)
+        warn_if_large_share_url(receipt_text)
+        if args.write:
+            args.write.parent.mkdir(parents=True, exist_ok=True)
+            args.write.write_text(receipt_text + "\n", encoding="utf-8")
+            return 0
+        print(receipt_text)
+        return 0
+
     html_target = args.write_html
     if args.chat_reply and html_target is None and args.output != "html":
         html_target = DEFAULT_CHAT_HTML_PATH

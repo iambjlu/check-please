@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 from check_please.data import find_codex_session_for_thread, newest_claude_usage_file, requested_agent_tool, runtime_agent_tool, runtime_claude_session_id, runtime_codex_thread_id, runtime_opencode_session_id  # noqa: E402
 from check_please.models import printable_receipt_char, visual_display_width  # noqa: E402
+from check_please.share import decode_share_payload  # noqa: E402
 
 SCRIPT = ROOT / "scripts" / "check_please.py"
 HOOK_SCRIPT = ROOT / "scripts" / "claude_session_end_hook.py"
@@ -753,6 +754,29 @@ def main() -> int:
         ["CLAUDE CODE", "THANK YOU FOR CODING WITH Claude", "USD ESTIMATE", "Add tip"],
         language="en",
     )
+
+    share_url = run_case(
+        "--provider", "anthropic",
+        "--agent-tool", "claude-code",
+        "--model", "claude-sonnet-4.5",
+        "--input-tokens", "12487",
+        "--output-tokens", "3215",
+        "--language", "zh",
+        "--output", "share-url",
+        "--share-base", "https://example.test",
+    )
+    assert share_url.startswith("https://example.test/r#"), share_url
+    assert "?" not in share_url.split("#", 1)[0], "share payload must not be in query string"
+    share_payload = decode_share_payload(share_url.split("#", 1)[1])
+    assert share_payload["v"] == 1
+    assert share_payload["kind"] == "single-receipt"
+    assert share_payload["language"] == "zh-TW"
+    assert share_payload["snapshot"]["input_tokens"] == 12487
+    assert share_payload["snapshot"]["output_tokens"] == 3215
+    assert "source" not in share_payload["snapshot"]
+    assert share_payload["estimate"]["status"] == "ESTIMATE"
+    assert share_payload["receipt"]["languages"]["zh-TW"]["language"] == "zh-TW"
+    assert share_payload["receipt"]["tip"]["zh-TW"]["options"][0]["percent"] == 15
 
     claude_env = os.environ.copy()
     claude_env["HOME"] = str(claude_home)

@@ -302,6 +302,17 @@ And now it behaves more like a live checkout surface instead of a dead export:
 - tipped receipts switch into a different checkout voice: less cold, more grateful, more willing to flatter you for the extra money
 - language switching now updates the page state as well, so the browser preview is not only visually switched but also semantically in the right language
 
+## Share URL
+
+Single-receipt web links use a zero-storage payload in the URL hash fragment. The server receives only the path, not the receipt data after `#`.
+
+```bash
+python3 scripts/check_please.py --agent-tool codex --output share-url --share-base https://your-site.example
+python3 scripts/check_please.py --agent-tool codex --share-url
+```
+
+`--share-base` defaults to `CHECK_PLEASE_WEB_BASE`, then `https://check-please.example`. The payload schema is documented in `references/share-payload.md`.
+
 ---
 
 ## Claude Code auto-trigger

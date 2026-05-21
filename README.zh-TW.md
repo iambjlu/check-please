@@ -69,6 +69,16 @@ python3 scripts/check_please.py --agent-tool claude-code --output html --write .
 
 打開 `receipt.html` 後可以直接列印。若使用 `--chat-reply`，工具會自動寫出 `/tmp/check-please.html` 並在回覆底部附上連結。
 
+## 分享連結
+
+單張收據可以輸出 zero-storage 分享連結：payload 只放在 URL 的 `#` 後面，server 收不到內容。
+
+```bash
+python3 scripts/check_please.py --agent-tool codex --output share-url --share-base https://your-site.example --language zh-TW
+```
+
+schema 寫在 `references/share-payload.md`。
+
 ## 修改文案
 
 繁體中文與廣東話的 footer 句庫放在 `check_please/footer_copy.json`。
