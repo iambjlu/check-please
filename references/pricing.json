@@ -353,34 +353,77 @@
     },
     {
       "provider": "google",
+      "model": "gemini-3.5-flash",
+      "aliases": ["gemini-3.5-flash", "gemini 3.5 flash"],
+      "input_per_million": 1.5,
+      "cached_input_per_million": 0.15,
+      "output_per_million": 9.0,
+      "rate_note": "Standard text tier",
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "source_checked_at": "2026-06-08"
+    },
+    {
+      "provider": "google",
       "model": "gemini-3.1-pro-preview",
-      "aliases": ["gemini-3.1-pro-preview", "gemini 3.1 pro preview", "gemini-3-pro-preview"],
+      "aliases": ["gemini-3.1-pro-preview", "gemini 3.1 pro preview", "gemini-3-pro-preview", "gemini-3.1-pro-preview-customtools"],
       "input_per_million": 2.0,
       "cached_input_per_million": 0.2,
       "output_per_million": 12.0,
       "rate_note": "<=200K tier",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
       "model": "gemini-3-flash-preview",
       "aliases": ["gemini-3-flash-preview", "gemini 3 flash preview", "gemini-3.1-flash-preview"],
-      "input_per_million": 0.3,
-      "cached_input_per_million": 0.03,
-      "output_per_million": 2.5,
+      "input_per_million": 0.5,
+      "cached_input_per_million": 0.05,
+      "output_per_million": 3.0,
+      "rate_note": "Standard text/image/video tier",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
-      "model": "gemini-3.1-flash-lite-preview",
-      "aliases": ["gemini-3.1-flash-lite-preview", "gemini 3.1 flash lite preview"],
+      "model": "gemini-3.1-flash-lite",
+      "aliases": ["gemini-3.1-flash-lite", "gemini 3.1 flash lite", "gemini-3.1-flash-lite-preview", "gemini 3.1 flash lite preview"],
       "input_per_million": 0.25,
       "cached_input_per_million": 0.025,
       "output_per_million": 1.5,
+      "rate_note": "Standard text/image/video tier",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
+    },
+    {
+      "provider": "google",
+      "model": "gemini-3.1-flash-live-preview",
+      "aliases": ["gemini-3.1-flash-live-preview", "gemini 3.1 flash live preview"],
+      "input_per_million": 0.75,
+      "output_per_million": 4.5,
+      "rate_note": "Live Preview text tier only",
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "source_checked_at": "2026-06-08"
+    },
+    {
+      "provider": "google",
+      "model": "gemini-3.1-flash-image",
+      "aliases": ["gemini-3.1-flash-image", "gemini 3.1 flash image"],
+      "input_per_million": 0.5,
+      "output_per_million": 3.0,
+      "rate_note": "Text/thinking token tier only; image output pricing is not represented",
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "source_checked_at": "2026-06-08"
+    },
+    {
+      "provider": "google",
+      "model": "gemini-3-pro-image",
+      "aliases": ["gemini-3-pro-image", "gemini 3 pro image"],
+      "input_per_million": 2.0,
+      "output_per_million": 12.0,
+      "rate_note": "Text/thinking token tier only; image output pricing is not represented",
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
@@ -391,7 +434,7 @@
       "output_per_million": 10.0,
       "rate_note": "<=200K tier",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
@@ -401,7 +444,7 @@
       "cached_input_per_million": 0.03,
       "output_per_million": 2.5,
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
@@ -411,7 +454,7 @@
       "cached_input_per_million": 0.01,
       "output_per_million": 0.4,
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
@@ -420,8 +463,9 @@
       "input_per_million": 0.1,
       "cached_input_per_million": 0.025,
       "output_per_million": 0.4,
+      "rate_note": "Deprecated and shut down June 1, 2026; retained for old receipts",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "google",
@@ -429,8 +473,9 @@
       "aliases": ["gemini-2.0-flash-lite", "gemini 2.0 flash lite"],
       "input_per_million": 0.075,
       "output_per_million": 0.3,
+      "rate_note": "Deprecated and shut down June 1, 2026; retained for old receipts",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "source_checked_at": "2026-04-25"
+      "source_checked_at": "2026-06-08"
     },
     {
       "provider": "moonshot",
