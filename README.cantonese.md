@@ -14,19 +14,41 @@
 
 佢唔係 dashboard，亦唔係 spreadsheet。佢會先讀本機真實日誌，再用 `references/pricing.json` 入面嘅價格表估算成本；如果模型未對應到價格，就會老老實實顯示未對應，唔會扮識計。
 
-## Cantonese / 廣東話版本
+## 預覽
 
-CLI 支援三種語言：
+```text
+                    ▐▛███▜▌
+                   ▝▜█████▛▘
+                     ▘▘ ▝▝
+                  CLAUDE CODE
 
-```bash
-python3 scripts/check_please.py --language en
-python3 scripts/check_please.py --language zh-TW
-python3 scripts/check_please.py --language cantonese
+                多謝使用 Claude
+        單號: CC_20260427_151928_7CE382
+            日期: 2026-04-27 15:19:28
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+供應商                                 ANTHROPIC
+模型                           claude-sonnet-4.5
+已用上下文                                12,487
+────────────────────────────────────────────────
+項目                                       TOKEN
+────────────────────────────────────────────────
+輸入 Tokens                               12,487
+輸出 Tokens                                3,215
+快取讀取                                   8,742
+推理 Tokens                                  128
+快取寫入                                   1,024
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+總數                               15,702 Tokens
+────────────────────────────────────────────────
+USD 估算                               $0.064771
+價格對應                       claude-sonnet-4.5
+價格日期                              2026-04-25
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                畫面順，銀包震。
+
+        ||| ||||| || ||| | | || |||  | |
+           CC_20260427_151928_7CE382
 ```
-
-`--language zh` 係繁體中文捷徑，會正規化成 `zh-TW`；呢個專案唔再輸出簡體中文版本。
-
-HTML 版都會有 `EN / 繁中 / 廣東話` 切換，一份檔案就可以轉語言。
 
 ## 安裝
 
@@ -44,32 +66,16 @@ npx skills add https://github.com/chelswcs/check-please -a claude-code -y
 npx skills add https://github.com/chelswcs/check-please -a opencode -y
 ```
 
-## 快速用法
-
-主流程係 local-only：喺 chat 入面輸出單，同時喺本機寫出可打印 HTML，唔需要 deploy 網站。
+本機 CLI 用法：
 
 ```bash
-python3 scripts/check_please.py --agent-tool codex --chat-reply --language cantonese
-python3 scripts/check_please.py --agent-tool claude-code --chat-reply --language cantonese
-python3 scripts/check_please.py --agent-tool kimi-code --chat-reply --language cantonese
-python3 scripts/check_please.py --agent-tool opencode --chat-reply --language cantonese
+python3 -m pip install -e .
+check-please --agent-tool codex --chat-reply
 ```
 
-手動資料例子：
+## 用法
 
-```bash
-python3 scripts/check_please.py \
-  --provider anthropic \
-  --agent-tool claude-code \
-  --model claude-sonnet-4.5 \
-  --input-tokens 12487 \
-  --cached-input-tokens 8742 \
-  --cache-write-tokens 1024 \
-  --output-tokens 3215 \
-  --language cantonese
-```
-
-## 觸發語
+喺 chat 入面講以下任一句，或者直接跑 CLI：
 
 - `token receipt`
 - `token 單`
@@ -84,32 +90,38 @@ python3 scripts/check_please.py \
 - `用廣東話出小票`
 - `廣東話 token receipt`
 
-## 可打印 HTML
-
-建議用 `--chat-reply`。佢會輸出 chat 用單，並自動寫出本機檔案 `/tmp/check-please.html`。
+例子：
 
 ```bash
 python3 scripts/check_please.py --agent-tool codex --chat-reply --language cantonese
+python3 scripts/check_please.py --agent-tool claude-code --chat-reply --language cantonese
+python3 scripts/check_please.py --agent-tool kimi-code --chat-reply --language cantonese
+python3 scripts/check_please.py --agent-tool opencode --chat-reply --language cantonese
 ```
 
-亦可以只輸出 HTML：
+輸出可打印 HTML：
 
 ```bash
 python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html --language cantonese
 ```
 
-開 `receipt.html` 就可以直接打印。用 `--chat-reply` 嘅話，工具會自動寫出 `/tmp/check-please.html`，再喺回覆底部加返條連結。
+## 支援軟件
 
-## 改文案
+| 軟件 | 狀態 | 資料來源 | 備註 |
+| --- | --- | --- | --- |
+| Codex | `已支援` | Codex JSONL Session | 直接讀本機 Session 紀錄 |
+| Claude Code | `已支援` | Claude usage-data + projects | Token 用 usage log，Model 用對話紀錄查 |
+| Trae | `而家手動模式` | Trae App Storage | 自動匯入對話紀錄未出 |
+| Kimi Code | `已支援` | kimi-cli `context.jsonl`（`~/.kimi/sessions/` 或 `KIMI_SHARE_DIR`） | 讀累積 `_usage.token_count`；預設唔估 USD 成本；需要分開 input/output 就用手動 flags |
+| OpenCode | `已支援` | `opencode*.db` SQLite（`~/.local/share/opencode/`，見 `OPENCODE_DATA_DIR`、`XDG_DATA_HOME`） | 讀 `session`/`message` 行；支援 `--scope latest-turn` \| `session` |
 
-繁中同廣東話 footer 句庫放喺 `check_please/footer_copy.json`。
+## 注意事項
 
-想再改語氣，就直接改 `zh-TW` 或 `cantonese` 入面嘅 `snarky`、`dry`、`encouraging` 分組；程式會跟今次對話主題揀 `visual`、`pricing`、`debug`、`shipping`、`iteration`、`reasoning`、`context` 或 `default`。
+- 部分 Trae 版本用 `Trae CN` / `.trae-cn` 而唔係 `Trae`。
+- 喺 Codex 入面跑，runtime 會自動識別，`check-please` 會讀 Codex logs。
+- 喺 Claude Code 嘅 SessionEnd hook 入面跑，`check-please` 會讀 Claude Code usage logs。
+- 如果係喺普通 shell 跑，而且本機有多個工具嘅 log，記得用 `--agent-tool` 指定邊個。
 
-## 驗證
+## 頁腳
 
-改完最少跑：
-
-```bash
-python3 scripts/validate_receipt.py
-```
+靈感來自：[Hchen1218/token-receipt](https://github.com/Hchen1218/token-receipt) 同 [chrishutchinson/claude-receipts](https://github.com/chrishutchinson/claude-receipts)。
