@@ -5,7 +5,7 @@
     <a href="./README.cantonese.md">Cantonese</a>
   </p>
   <h1>check-please</h1>
-  <p><strong>將 AI 用量，印成一張識得補刀嘅單。</strong></p>
+  <p><strong>將 AI 用量，印成一張識寸你嘅單。</strong></p>
 </div>
 
 ## 呢個係咩
