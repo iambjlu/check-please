@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import webbrowser
 from pathlib import Path
 from typing import List, Optional
 
@@ -12,7 +13,6 @@ from .data import available_fields_report, estimate_cost, resolve_snapshot
 from .html_render import render_receipt_html
 from .models import ALLOWED_WIDTHS, DEFAULT_FOOTER, DEFAULT_PRICING, SUPPORTED_LANGUAGES
 from .render import auto_brand, print_receipt, render_receipt
-from .share import build_share_payload, build_share_url, warn_if_large_share_url
 
 DEFAULT_CHAT_HTML_PATH = Path("/tmp/check-please.html")
 
@@ -20,8 +20,12 @@ DEFAULT_CHAT_HTML_PATH = Path("/tmp/check-please.html")
 def format_chat_reply(receipt_text: str, html_path: Optional[Path] = None) -> str:
     reply = f"```text\n{receipt_text}\n```"
     if html_path:
-        reply += f"\n\n[Printable HTML]({html_path.as_posix()})"
+        reply += f"\n\nPrintable HTML: {html_path.resolve().as_uri()}"
     return reply
+
+
+def open_in_default_browser(path: Path) -> bool:
+    return webbrowser.open(path.resolve().as_uri(), new=2)
 
 
 def parse_cli_language(value: str) -> str:
@@ -38,10 +42,10 @@ def parse_cli_language(value: str) -> str:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Render token usage as an ASCII thermal receipt.")
     parser.add_argument("--session", type=Path, help="Codex JSONL session path. Defaults to newest local session.")
-    parser.add_argument("--scope", choices=("latest-turn", "session"), default="latest-turn")
+    parser.add_argument("--scope", choices=("latest-turn", "session", "today"), default="latest-turn", help="latest-turn or session bills one conversation; today aggregates every session of the current local day, broken down by model.")
     parser.add_argument("--width", type=int, choices=ALLOWED_WIDTHS, default=48)
-    parser.add_argument("--agent-tool", choices=("auto", "codex", "claude-code", "trae", "kimi-code", "opencode", "generic"), default=None, help="Software data source and receipt logo. When omitted, check-please uses the current runtime if it can detect one; otherwise it will ask you to disambiguate instead of guessing across software.")
-    parser.add_argument("--brand", choices=("auto", "codex", "claude-code", "trae", "kimi-code", "opencode", "generic"), default=None, help="Backward-compatible logo override. Prefer --agent-tool when choosing a software data source.")
+    parser.add_argument("--agent-tool", choices=("auto", "codex", "claude-code", "opencode", "cursor", "manus", "antigravity", "trae", "generic"), default=None, help="Software data source and receipt logo. claude-code/codex/opencode read local logs; cursor/manus/antigravity/trae brand the receipt and expect manual token flags. When omitted, check-please uses the current runtime if it can detect one.")
+    parser.add_argument("--brand", choices=("auto", "codex", "claude-code", "opencode", "cursor", "manus", "antigravity", "trae", "generic"), default=None, help="Backward-compatible logo override. Prefer --agent-tool when choosing a software data source.")
     parser.add_argument(
         "--opencode-session-id",
         default=None,
@@ -73,12 +77,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--context-window", type=int)
     parser.add_argument("--receipt-seed")
     parser.add_argument("--show-fields", action="store_true", help="Print a JSON report of fields available from the selected source instead of a receipt.")
-    parser.add_argument("--output", choices=("text", "html", "share-url"), default="text", help="Receipt output format. Use html for a printable browser page, or share-url for a zero-storage web link.")
-    parser.add_argument("--share-url", action="store_true", help="Shortcut for --output share-url.")
-    parser.add_argument("--share-base", help="Base URL for --output share-url. Defaults to CHECK_PLEASE_WEB_BASE or https://check-please.example.")
+    parser.add_argument("--output", choices=("text", "html"), default="text", help="Receipt output format. Use html for a printable browser page.")
     parser.add_argument("--write", type=Path, help="Write the rendered receipt to a file and suppress stdout. Useful when a host tool would otherwise echo the receipt multiple times.")
     parser.add_argument("--write-html", type=Path, help="Also write a printable HTML receipt to a file while keeping the main output unchanged.")
-    parser.add_argument("--chat-reply", action="store_true", help="Print a chat-ready reply: fenced receipt text plus a Printable HTML link. When no --write-html path is given, /tmp/check-please.html is used automatically.")
+    parser.add_argument("--open-html", action="store_true", help="Open the generated HTML receipt in the system default browser after writing it.")
+    parser.add_argument("--chat-reply", action="store_true", help="Print a chat-ready reply: fenced receipt text plus a Printable HTML browser URL. When no --write-html path is given, /tmp/check-please.html is used automatically.")
     parser.add_argument("--stream", action="store_true", default=None, help="Print receipt one line at a time, like a receipt printer.")
     parser.add_argument("--no-stream", dest="stream", action="store_false", help="Print receipt all at once even in an interactive terminal.")
     parser.add_argument("--stream-delay", type=float, default=0.03, help="Delay in seconds between lines when --stream is used.")
@@ -88,8 +91,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
-    if args.share_url:
-        args.output = "share-url"
 
     snapshot = resolve_snapshot(args)
     if args.provider:
@@ -110,17 +111,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     agent_tool = auto_brand(snapshot.provider, snapshot.source, args.agent_tool or args.brand or "auto")
     conversation_hint = args.conversation_summary or args.conversation_hint
     language = args.language
-    if args.output == "share-url":
-        payload = build_share_payload(snapshot, estimate, args.width, agent_tool, args.footer, args.footer_tone, conversation_hint, language)
-        receipt_text = build_share_url(payload, args.share_base)
-        warn_if_large_share_url(receipt_text)
-        if args.write:
-            args.write.parent.mkdir(parents=True, exist_ok=True)
-            args.write.write_text(receipt_text + "\n", encoding="utf-8")
-            return 0
-        print(receipt_text)
-        return 0
-
     html_target = args.write_html
     if args.chat_reply and html_target is None and args.output != "html":
         html_target = DEFAULT_CHAT_HTML_PATH
@@ -137,6 +127,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.write:
         args.write.parent.mkdir(parents=True, exist_ok=True)
         args.write.write_text(receipt_text + "\n", encoding="utf-8")
+    if html_target and args.open_html:
+        open_in_default_browser(html_target)
     if args.chat_reply:
         print(format_chat_reply(receipt_text, html_target))
         return 0
@@ -148,3 +140,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     stream = sys.stdout.isatty() if args.stream is None else args.stream
     print_receipt(receipt_text, stream, args.stream_delay)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

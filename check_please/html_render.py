@@ -191,6 +191,10 @@ def _render_receipt_article(
     logo_art = _logo_markup(agent_tool, view.logo_lines)
     hidden_class = "" if active else " receipt--hidden"
     return (
+        # The shell carries the drop-shadow: filter must live on a parent, because
+        # filter is applied before mask on the same element — the torn-edge mask
+        # would erase a shadow declared on .receipt itself.
+        '      <div class="receipt-shell">\n'
         f'      <article class="receipt{hidden_class}" data-language="{escape(view.language)}">\n'
         '        <header class="receipt-header">\n'
         f"{logo_art}"
@@ -219,6 +223,7 @@ def _render_receipt_article(
         f'          <div class="receipt-barcode-id">{escape(view.barcode_id_line)}</div>\n'
         "        </footer>\n"
         "      </article>\n"
+        "      </div>\n"
     )
 
 
@@ -258,18 +263,21 @@ def render_receipt_html(
         "tip": tip_configs,
     }
     language_buttons = "\n".join(
-        f'          <button class="language-option{" is-selected" if lang == page_lang else ""}" type="button" data-language-button="{lang}" aria-pressed="{"true" if lang == page_lang else "false"}">{escape(TIP_UI_LABELS[lang]["language_button"])}</button>'
+        f'        <button class="language-option{" is-selected" if lang == page_lang else ""}" type="button" data-language-button="{lang}" aria-pressed="{"true" if lang == page_lang else "false"}">{escape(TIP_UI_LABELS[lang]["language_button"])}</button>'
         for lang in HTML_LANGUAGES
     )
-    language_panel = (
-        '      <section class="receipt-language-panel">\n'
-        '        <div class="receipt-language-controls">\n'
+    topbar = (
+        '    <nav class="topbar">\n'
+        '      <div class="topbar-left">\n'
+        '        <button class="btn-print" type="button" onclick="window.print()">Print receipt</button>\n'
+        '        <button class="btn-ghost" type="button" data-save-png>Save PNG</button>\n'
+        "      </div>\n"
+        f'      <div class="lang" data-active="{HTML_LANGUAGES.index(page_lang)}">\n'
         f"{language_buttons}\n"
-        "        </div>\n"
-        "      </section>\n"
+        "      </div>\n"
+        "    </nav>\n"
     )
     tip_panel = ""
-    tip_script = ""
     if tip_configs[page_lang] is not None:
         option_buttons = "\n".join(
             f'            <button class="tip-option" type="button" data-tip-percent="{percent}">{percent}%</button>'
@@ -288,14 +296,16 @@ def render_receipt_html(
             "        </section>\n"
             "      </section>\n"
         )
-        tip_script = (
+    # The script always ships: language switching must work even when there is
+    # no price estimate (tip handlers no-op when their elements are absent).
+    tip_script = (
             f'    <script id="tip-config" type="application/json">{_json_script_payload(config_payload)}</script>\n'
             "    <script>\n"
             "      (() => {\n"
             "        const node = document.getElementById('tip-config');\n"
             "        if (!node) return;\n"
             "        const config = JSON.parse(node.textContent || '{}');\n"
-            "        let activeLanguage = config.defaultLanguage || 'en';\n"
+            "        let activeLanguage = config.defaultLanguage || document.documentElement.lang || 'en';\n"
             "        const toggle = document.getElementById('tip-toggle');\n"
             "        const optionsWrap = document.getElementById('tip-options');\n"
             "        const buttons = Array.from(document.querySelectorAll('[data-tip-percent]'));\n"
@@ -362,6 +372,9 @@ def render_receipt_html(
             "            button.classList.toggle('is-selected', active);\n"
             "            button.setAttribute('aria-pressed', active ? 'true' : 'false');\n"
             "          });\n"
+            "          const langWrap = document.querySelector('.lang');\n"
+            "          const langIndex = languageButtons.findIndex((button) => button.dataset.languageButton === lang);\n"
+            "          if (langWrap && langIndex >= 0) langWrap.dataset.active = String(langIndex);\n"
             "          if (tipToggleLabel && config.uiLabels && config.uiLabels[lang]) {\n"
             "            tipToggleLabel.textContent = config.uiLabels[lang].toggle;\n"
             "          }\n"
@@ -395,15 +408,85 @@ def render_receipt_html(
             "            syncVisibleState();\n"
             "          });\n"
             "        }\n"
+            "        const pngButton = document.querySelector('[data-save-png]');\n"
+            "        const saveReceiptPng = () => {\n"
+            "          const receipt = document.querySelector('.receipt:not(.receipt--hidden)');\n"
+            "          if (!receipt) return;\n"
+            "          const pad = 48;\n"
+            "          const width = receipt.offsetWidth + pad * 2;\n"
+            "          const height = receipt.offsetHeight + pad * 2;\n"
+            "          const xhtmlNS = 'http://www.w3.org/1999/xhtml';\n"
+            "          const svgNS = 'http://www.w3.org/2000/svg';\n"
+            "          const clone = receipt.cloneNode(true);\n"
+            "          clone.style.width = receipt.offsetWidth + 'px';\n"
+            "          const css = Array.from(document.querySelectorAll('style')).map((node) => node.textContent).join('\\n');\n"
+            "          const stage = document.createElementNS(xhtmlNS, 'div');\n"
+            "          stage.setAttribute('class', 'png-stage');\n"
+            "          const shell = document.createElementNS(xhtmlNS, 'div');\n"
+            "          shell.setAttribute('class', 'receipt-shell');\n"
+            "          const stageStyle = document.createElementNS(xhtmlNS, 'style');\n"
+            "          stageStyle.textContent = css + '\\n.png-stage{margin:0;padding:' + pad + 'px;background:#faf9f6;}' +\n"
+            "            '\\n.png-stage .receipt{animation:none !important;transform:none !important;margin:0;}' +\n"
+            "            '\\n.png-stage .receipt-shell{animation:none !important;transform:none !important;}';\n"
+            "          stage.appendChild(stageStyle);\n"
+            "          shell.appendChild(clone);\n"
+            "          stage.appendChild(shell);\n"
+            "          const svg = document.createElementNS(svgNS, 'svg');\n"
+            "          svg.setAttribute('width', String(width));\n"
+            "          svg.setAttribute('height', String(height));\n"
+            "          const fo = document.createElementNS(svgNS, 'foreignObject');\n"
+            "          fo.setAttribute('width', '100%');\n"
+            "          fo.setAttribute('height', '100%');\n"
+            "          fo.appendChild(stage);\n"
+            "          svg.appendChild(fo);\n"
+            "          const markup = new XMLSerializer().serializeToString(svg);\n"
+            "          if (pngButton) pngButton.disabled = true;\n"
+            "          const output = document.querySelector('.printer-output');\n"
+            "          receipt.classList.add('is-torn');\n"
+            "          if (output) output.classList.add('is-tearing');\n"
+            "          const reprint = () => {\n"
+            "            receipt.classList.remove('is-torn');\n"
+            "            if (output) output.classList.remove('is-tearing');\n"
+            "            receipt.style.animation = 'none';\n"
+            "            void receipt.offsetWidth;\n"
+            "            receipt.style.animation = '';\n"
+            "            if (pngButton) pngButton.disabled = false;\n"
+            "          };\n"
+            "          setTimeout(reprint, 1150);\n"
+            "          const img = new Image();\n"
+            "          img.onload = () => {\n"
+            "            const scale = 3;\n"
+            "            const canvas = document.createElement('canvas');\n"
+            "            canvas.width = width * scale;\n"
+            "            canvas.height = height * scale;\n"
+            "            const ctx = canvas.getContext('2d');\n"
+            "            ctx.scale(scale, scale);\n"
+            "            ctx.drawImage(img, 0, 0);\n"
+            "            const url = canvas.toDataURL('image/png');\n"
+            "            window.__lastReceiptPng = url;\n"
+            "            const link = document.createElement('a');\n"
+            "            link.download = (document.title.split(' ')[0] || 'check-please') + '.png';\n"
+            "            link.href = url;\n"
+            "            link.click();\n"
+            "          };\n"
+            "          img.onerror = () => {\n"
+            "            alert('PNG export failed in this browser; use Print receipt instead.');\n"
+            "          };\n"
+            "          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);\n"
+            "        };\n"
+            "        if (pngButton) pngButton.addEventListener('click', saveReceiptPng);\n"
             "        applyLanguage(activeLanguage);\n"
             "        syncVisibleState();\n"
             "      })();\n"
             "    </script>\n"
         )
+    # Daily totals span sessions/models, so the host logo is replaced by the
+    # daily masthead (the view already carries the right label).
+    logo_agent = "generic" if snapshot.scope == "today" else agent_tool
     receipt_articles = "".join(
         _render_receipt_article(
             view,
-            agent_tool,
+            logo_agent,
             footer_texts[lang],
             _tip_summary_markup(TIP_UI_LABELS[lang], str(tip_configs[lang]["subtotal"])) if tip_configs[lang] is not None else "",
             active=(lang == page_lang),
@@ -416,17 +499,33 @@ def render_receipt_html(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title} · check-please</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600&amp;family=Noto+Sans+TC:wght@400;500;700&amp;display=swap" rel="stylesheet" />
     <style>
       :root {{
         color-scheme: light;
-        --page-bg: #ececec;
+        --page-bg: #faf9f6;
+        --bg-2: #f1efe8;
         --paper: #ffffff;
-        --ink: #151515;
+        --ink: #18170f;
+        --ink-soft: #3a382f;
+        --muted: #6f6c61;
+        --line: rgba(24, 23, 15, 0.13);
+        --accent: #c2f03a;
+        --accent-d: #a9d91f;
+        --on-accent: #18170f;
+        --surface: #ffffff;
+        --nav-bg: rgba(250, 249, 246, 0.88);
+        --font: 'Mona Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        --label: 'Space Grotesk', system-ui, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
         --rule: #232323;
         --receipt-width: 80mm;
         --pad-x: 4mm;
         --pad-top: 7mm;
-        --pad-bottom: 4.8mm;
+        --pad-bottom: 6.2mm;
         --logo-width: 24mm;
         --logo-shell-height: 26mm;
         --logo-label-size: 4.3mm;
@@ -444,29 +543,134 @@ def render_receipt_html(
         padding: 0;
         background: var(--page-bg);
         color: var(--ink);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-family: var(--font);
+        -webkit-font-smoothing: antialiased;
       }}
       body {{
         min-height: 100vh;
-        padding: 12px 0 24px;
+        padding: 72px 0 24px;
       }}
-      .print-toolbar {{
+      .topbar {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
         display: flex;
-        justify-content: center;
-        margin-bottom: 12px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 16px;
+        background: var(--nav-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--line);
       }}
-      .print-button {{
+      .btn-print {{
+        appearance: none;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        border: 1.5px solid transparent;
+        border-radius: 13px;
+        height: 40px;
+        min-width: 89px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background 0.15s;
+      }}
+      @media (hover: hover) {{
+        .btn-print:hover {{
+          background: var(--accent-d);
+        }}
+      }}
+      .topbar-left {{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }}
+      .btn-ghost {{
+        appearance: none;
+        background: none;
+        color: var(--ink);
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        border: 1.5px solid var(--line);
+        border-radius: 13px;
+        height: 40px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: border-color 0.15s, color 0.15s;
+      }}
+      @media (hover: hover) {{
+        .btn-ghost:hover {{
+          border-color: var(--ink);
+        }}
+      }}
+      .btn-ghost:disabled {{
+        opacity: 0.5;
+        cursor: progress;
+      }}
+      .lang {{
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        align-items: stretch;
+        position: relative;
+        height: 40px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+      }}
+      .lang::before {{
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: calc((100% - 6px) / 3);
+        height: calc(100% - 6px);
+        background: var(--ink);
+        border-radius: 10px;
+        pointer-events: none;
+        transition: transform 0.2s var(--ease);
+      }}
+      .lang[data-active="1"]::before {{
+        transform: translateX(100%);
+      }}
+      .lang[data-active="2"]::before {{
+        transform: translateX(200%);
+      }}
+      .lang button {{
         appearance: none;
         border: 0;
-        border-radius: 999px;
-        padding: 10px 18px;
-        background: #1b1c1f;
-        color: #fff;
-        font: inherit;
+        background: none;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        padding: 0 12px;
+        color: var(--muted);
+        border-radius: 10px;
+        position: relative;
+        z-index: 1;
         cursor: pointer;
+        transition: color 0.2s var(--ease);
       }}
-      .print-button:hover {{
-        background: #33363d;
+      .lang button.is-selected {{
+        color: var(--page-bg);
       }}
       .receipt-page {{
         display: flex;
@@ -476,13 +680,171 @@ def render_receipt_html(
         background: var(--page-bg);
         gap: 10px;
       }}
+      .printer {{
+        position: relative;
+        z-index: 2;
+        width: min(calc(var(--receipt-width) + 18mm), calc(100vw - 16px));
+        height: 15mm;
+        border-radius: 4.5mm;
+        background: linear-gradient(180deg, #34332a 0%, #201f17 45%, #15140d 100%);
+        box-shadow: 0 10px 18px rgba(24, 23, 15, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }}
+      .printer::after {{
+        content: "";
+        position: absolute;
+        left: 7mm;
+        right: 7mm;
+        bottom: 2mm;
+        height: 1.3mm;
+        border-radius: 0.8mm;
+        background: #050506;
+        box-shadow: inset 0 0.5mm 0.8mm rgba(0, 0, 0, 0.9);
+      }}
+      .printer-label {{
+        color: #f4f2ea;
+        font-family: var(--label);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        user-select: none;
+      }}
+      .printer-led {{
+        position: absolute;
+        right: 5.5mm;
+        top: 50%;
+        width: 1.8mm;
+        height: 1.8mm;
+        border-radius: 50%;
+        transform: translateY(-50%);
+        background: var(--accent);
+        box-shadow: 0 0 2mm rgba(194, 240, 58, 0.85);
+        animation: led-pulse 1.2s ease-in-out infinite alternate;
+      }}
+      .printer-output {{
+        position: relative;
+        z-index: 3;
+        margin-top: -18px;
+        clip-path: inset(0 -64px -64px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        perspective: 1000px;
+      }}
+      .printer-output::before {{
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 6px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0));
+        z-index: 2;
+        pointer-events: none;
+      }}
       .receipt {{
         width: min(var(--receipt-width), calc(100vw - 24px));
         background: var(--paper);
         padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
         position: relative;
         overflow: hidden;
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
+        font-family: var(--mono);
+        /* Real torn edge: the zigzag is cut out of the paper (transparent),
+           and drop-shadow follows the resulting silhouette. */
+        -webkit-mask:
+          linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 16px 8px repeat-x;
+        mask:
+          linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 16px 8px repeat-x;
+        animation: printer-feed 4.6s 0.2s both;
+      }}
+      .receipt::after {{
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        /* Cylindrical shading so the flat paper reads as slightly curled. */
+        background:
+          linear-gradient(90deg, rgba(24, 23, 15, 0.06), rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, 0) 85%, rgba(24, 23, 15, 0.07)),
+          linear-gradient(180deg, rgba(24, 23, 15, 0.05), rgba(255, 255, 255, 0) 7%);
+      }}
+      .receipt-shell {{
+        filter: drop-shadow(0 2px 4px rgba(24, 23, 15, 0.14)) drop-shadow(0 14px 28px rgba(24, 23, 15, 0.22));
+        transform-origin: 50% 0;
+        /* Gentle hanging-paper sway; starts once the feed animation has finished. */
+        animation: paper-sway 7s ease-in-out 5s infinite;
+      }}
+      @keyframes paper-sway {{
+        0%, 100% {{
+          transform: rotateX(0deg) rotateZ(0deg);
+        }}
+        30% {{
+          transform: rotateX(5deg) rotateZ(0.4deg);
+        }}
+        65% {{
+          transform: rotateX(1.5deg) rotateZ(-0.35deg);
+        }}
+      }}
+      /* Save PNG: rip the receipt off the printer, let it drop, then reprint. */
+      .printer-output.is-tearing {{
+        clip-path: inset(0 -64px -2000px);
+      }}
+      .receipt.is-torn {{
+        animation: paper-tear 1s cubic-bezier(0.45, 0.05, 0.75, 0.4) both;
+      }}
+      @keyframes paper-tear {{
+        0% {{
+          transform: translateY(0) rotateZ(0deg);
+        }}
+        14% {{
+          transform: translateY(9px) rotateZ(-2.6deg);
+        }}
+        28% {{
+          transform: translateY(4px) rotateZ(2deg);
+        }}
+        100% {{
+          transform: translateY(115vh) rotateZ(-9deg);
+        }}
+      }}
+      @keyframes printer-feed {{
+        0% {{
+          transform: translateY(-101%);
+          animation-timing-function: cubic-bezier(0.4, 0.1, 0.6, 0.9);
+        }}
+        70% {{
+          transform: translateY(0);
+          animation-timing-function: ease-in-out;
+        }}
+        81% {{
+          transform: translateY(-2.2%);
+          animation-timing-function: ease-in-out;
+        }}
+        90% {{
+          transform: translateY(0);
+          animation-timing-function: ease-in-out;
+        }}
+        96% {{
+          transform: translateY(-0.6%);
+          animation-timing-function: ease-in-out;
+        }}
+        100% {{
+          transform: translateY(0);
+        }}
+      }}
+      @keyframes led-pulse {{
+        from {{ opacity: 1; }}
+        to {{ opacity: 0.35; }}
+      }}
+      @media (prefers-reduced-motion: reduce) {{
+        .receipt,
+        .receipt-shell,
+        .printer-led {{
+          animation: none;
+        }}
       }}
       .receipt--hidden {{
         display: none;
@@ -550,42 +912,15 @@ def render_receipt_html(
         width: min(var(--receipt-width), calc(100vw - 24px));
         display: flex;
         justify-content: center;
-      }}
-      .receipt-language-panel {{
-        width: min(var(--receipt-width), calc(100vw - 24px));
-        display: flex;
-        justify-content: center;
-      }}
-      .receipt-language-controls {{
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        gap: 1.5mm;
-        padding: 3mm 4mm;
-        background: rgba(255, 255, 255, 0.55);
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
-      }}
-      .language-option {{
-        appearance: none;
-        border: 0.25mm solid var(--rule);
-        background: var(--paper);
-        color: var(--ink);
-        font: inherit;
-        font-size: 3mm;
-        line-height: 1;
-        padding: 1.8mm 3.2mm;
-        cursor: pointer;
-      }}
-      .language-option.is-selected {{
-        background: var(--ink);
-        color: var(--paper);
+        margin-top: 10px;
       }}
       .receipt-tip-controls {{
         width: 100%;
-        padding: 3.5mm 4mm;
+        padding: 14px 16px;
         text-align: center;
-        background: rgba(255, 255, 255, 0.55);
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
       }}
       .receipt-tip-controls,
       .receipt-tip-controls * {{
@@ -597,21 +932,51 @@ def render_receipt_html(
       .tip-toggle {{
         display: inline-flex;
         align-items: center;
-        gap: 2mm;
-        font-size: var(--meta-size);
+        gap: 10px;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink);
         cursor: pointer;
       }}
       .tip-toggle input {{
-        width: 4mm;
-        height: 4mm;
+        appearance: none;
+        -webkit-appearance: none;
+        width: 36px;
+        height: 22px;
         margin: 0;
+        border: 1.5px solid var(--line);
+        border-radius: 999px;
+        background: var(--bg-2);
+        position: relative;
+        cursor: pointer;
+        transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+      }}
+      .tip-toggle input::after {{
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background: var(--surface);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+        transition: transform 0.2s var(--ease);
+      }}
+      .tip-toggle input:checked {{
+        background: var(--accent);
+        border-color: var(--accent-d);
+      }}
+      .tip-toggle input:checked::after {{
+        transform: translateX(14px);
       }}
       .tip-options {{
         display: flex;
         justify-content: center;
         flex-wrap: wrap;
-        gap: 1.5mm;
-        margin-top: 2mm;
+        gap: 8px;
+        margin-top: 12px;
       }}
       .tip-options[hidden],
       .receipt-tip-summary[hidden] {{
@@ -619,18 +984,28 @@ def render_receipt_html(
       }}
       .tip-option {{
         appearance: none;
-        border: 0.25mm solid var(--rule);
-        background: var(--paper);
-        color: var(--ink);
-        font: inherit;
-        font-size: 3mm;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
         line-height: 1;
-        padding: 1.8mm 2.6mm;
+        color: var(--muted);
+        background: var(--surface);
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 14px;
         cursor: pointer;
+        transition: border-color 0.15s, color 0.15s, background 0.15s;
+      }}
+      @media (hover: hover) {{
+        .tip-option:hover {{
+          border-color: var(--ink);
+          color: var(--ink);
+        }}
       }}
       .tip-option.is-selected {{
         background: var(--ink);
-        color: var(--paper);
+        color: var(--page-bg);
+        border-color: var(--ink);
       }}
       .receipt-row {{
         display: grid;
@@ -685,9 +1060,9 @@ def render_receipt_html(
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
         }}
-        .print-toolbar,
+        .topbar,
         .receipt-note,
-        .receipt-language-panel,
+        .printer,
         .receipt-tip-panel,
         .receipt-tip-controls {{
           display: none;
@@ -697,21 +1072,41 @@ def render_receipt_html(
           padding: 0;
           background: transparent;
         }}
+        .printer-output {{
+          display: block;
+          margin-top: 0;
+          clip-path: none;
+        }}
+        .printer-output::before {{
+          display: none;
+        }}
+        .receipt-shell {{
+          filter: none;
+          animation: none;
+        }}
         .receipt {{
           width: var(--receipt-width);
           margin: 0 auto;
-          box-shadow: none;
+          -webkit-mask: none;
+          mask: none;
+          animation: none;
+        }}
+        .receipt::after {{
+          display: none;
         }}
       }}
     </style>
   </head>
   <body>
-    <div class="print-toolbar">
-      <button class="print-button" type="button" onclick="window.print()">Print receipt</button>
-    </div>
+{topbar}
     <main class="receipt-page">
+      <div class="printer" aria-hidden="true">
+        <span class="printer-label">Check, Please!</span>
+        <span class="printer-led"></span>
+      </div>
+      <div class="printer-output">
 {receipt_articles}
-{language_panel}
+      </div>
 {tip_panel}
     </main>
 {tip_script}

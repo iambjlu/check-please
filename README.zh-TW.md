@@ -92,14 +92,13 @@ check-please --agent-tool codex --chat-reply
 ```bash
 python3 scripts/check_please.py --agent-tool codex --chat-reply
 python3 scripts/check_please.py --agent-tool claude-code --chat-reply
-python3 scripts/check_please.py --agent-tool kimi-code --chat-reply
 python3 scripts/check_please.py --agent-tool opencode --chat-reply
 ```
 
-輸出可列印的 HTML：
+輸出可列印的 HTML，並用預設瀏覽器打開：
 
 ```bash
-python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html
+python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html --open-html
 ```
 
 ## 支援軟體
@@ -109,7 +108,7 @@ python3 scripts/check_please.py --agent-tool claude-code --output html --write .
 | Codex | `已支援` | Codex JSONL Session | 直接讀取本機 Session 紀錄 |
 | Claude Code | `已支援` | Claude usage-data + projects | Token 來自 usage log，Model 來自對話紀錄 |
 | Trae | `目前手動模式` | Trae App Storage | 尚未支援自動匯入對話紀錄 |
-| Kimi Code | `已支援` | kimi-cli context.jsonl | 讀取累積 Token 用量；預設不估算 USD 成本 |
+| Cursor / Manus / Antigravity / 其他 agent | `手動模式` | 無穩定本地用量日誌 | Agent 自行帶 `--input-tokens` / `--output-tokens`，配 `--agent-tool <host>` 顯示宿主標識 |
 | OpenCode | `已支援` | OpenCode SQLite Database | 支援 `latest-turn` 與 `session` 統計 |
 
 ## 注意事項

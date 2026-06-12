@@ -12,8 +12,7 @@ from typing import Any, Optional, Tuple
 
 ALLOWED_WIDTHS = (42, 48, 56, 64)
 SKILL_DIR = Path(__file__).resolve().parents[1]
-PACKAGE_PRICING = Path(__file__).with_name("pricing.json")
-DEFAULT_PRICING = PACKAGE_PRICING if PACKAGE_PRICING.exists() else SKILL_DIR / "references" / "pricing.json"
+DEFAULT_PRICING = Path(__file__).with_name("pricing.json")
 DEFAULT_FOOTER = "auto"
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = ("en", "zh-TW", "cantonese")
@@ -35,6 +34,19 @@ OPTIONAL_TOKEN_FIELDS = (
 RECEIPT_TOKEN_FIELDS = COMMON_TOKEN_FIELDS + OPTIONAL_TOKEN_FIELDS
 
 
+@dataclass(frozen=True)
+class ModelUsage:
+    model: str
+    provider: str = "unknown"
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    cache_write_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_output_tokens: int = 0
+    total_tokens: int = 0
+    sessions: int = 0
+
+
 @dataclass
 class UsageSnapshot:
     input_tokens: int = 0
@@ -43,7 +55,7 @@ class UsageSnapshot:
     output_tokens: int = 0
     reasoning_output_tokens: int = 0
     total_tokens: int = 0
-    # Kimi Code: context.jsonl `_usage.token_count` is cumulative context usage, not API billing split.
+    # Cumulative context usage when the source records it separately from API billing splits.
     context_tokens: Optional[int] = None
     context_window: Optional[int] = None
     provider: str = "unknown"
@@ -55,6 +67,17 @@ class UsageSnapshot:
     available_fields: Tuple[str, ...] = ()
     # True disables price estimation when cumulative context would be mistaken for prompt/completion billing.
     skip_price_estimate: bool = False
+    # Daily scope: per-model aggregation across every session seen today.
+    model_breakdown: Tuple[ModelUsage, ...] = ()
+    session_count: int = 1
+
+
+@dataclass(frozen=True)
+class ModelCost:
+    model: str
+    provider: str = "unknown"
+    amount: Optional[float] = None
+    currency: str = "USD"
 
 
 @dataclass
@@ -66,6 +89,9 @@ class PriceEstimate:
     source_url: str = ""
     source_checked_at: str = ""
     rate_note: str = ""
+    # Daily scope: per-model pricing, kept per vendor so different vendors
+    # (and currencies) are totalled separately.
+    breakdown: Tuple[ModelCost, ...] = ()
 
 
 def normalize(value: str) -> str:

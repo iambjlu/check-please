@@ -16,10 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from check_please.data import find_codex_session_for_thread, newest_claude_usage_file, requested_agent_tool, runtime_agent_tool, runtime_claude_session_id, runtime_codex_thread_id, runtime_opencode_session_id  # noqa: E402
+from check_please.data import find_codex_session_for_thread, requested_agent_tool, runtime_agent_tool, runtime_claude_session_id, runtime_codex_thread_id, runtime_opencode_session_id  # noqa: E402
 from check_please.models import PriceEstimate, UsageSnapshot, printable_receipt_char, visual_display_width  # noqa: E402
 from check_please.render import auto_footer_line  # noqa: E402
-from check_please.share import decode_share_payload  # noqa: E402
 
 SCRIPT = ROOT / "scripts" / "check_please.py"
 HOOK_SCRIPT = ROOT / "scripts" / "claude_session_end_hook.py"
@@ -84,7 +83,11 @@ def assert_html_receipt(text: str, must_contain: list[str], language: str = "en"
     assert f'lang="{language}"' in text, f"expected html lang={language!r}"
     assert "receipt-row" in text, "receipt rows missing"
     assert "receipt-barcode" in text, "barcode block missing"
-    assert "receipt-language-panel" in text, "language toggle panel missing"
+    assert 'class="lang"' in text, "language switch missing from topbar"
+    assert 'class="topbar"' in text, "topbar missing"
+    assert 'class="printer"' in text, "printer graphic missing"
+    assert "data-save-png" in text, "save png button missing"
+    assert "image/svg+xml;charset=utf-8" in text, "png export pipeline missing"
     assert "document.documentElement.lang = lang;" in text, "html language should sync when toggling receipts"
     assert 'data-language-button="en"' in text, "english language button missing"
     assert 'data-language-button="zh-TW"' in text, "traditional chinese language button missing"
@@ -191,99 +194,53 @@ def make_session_fixture() -> Path:
     return fixture
 
 
-def make_claude_usage_fixture() -> tuple[Path, Path]:
+def make_claude_transcript_fixture() -> Path:
     tmpdir = Path(tempfile.mkdtemp(prefix="check-please-claude-hook-"))
-    usage = tmpdir / "claude-session.json"
-    transcript = tmpdir / "claude-session.jsonl"
-    usage.write_text(
-        json.dumps(
-            {
-                "session_id": "claude-hook-session",
-                "start_time": "2026-04-27T04:00:00Z",
-                "input_tokens": 12487,
-                "output_tokens": 3215,
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-    transcript_items = [
+    transcript = tmpdir / "claude-hook-session.jsonl"
+    items = [
         {
+            "sessionId": "claude-hook-session",
+            "timestamp": "2026-04-27T04:00:00Z",
             "message": {
                 "model": "claude-sonnet-4.5",
-            }
+                "usage": {
+                    "input_tokens": 12487,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": 3215,
+                },
+            },
         }
     ]
     with transcript.open("w", encoding="utf-8") as handle:
-        for item in transcript_items:
+        for item in items:
             handle.write(json.dumps(item, ensure_ascii=True) + "\n")
-    return usage, transcript
+    return transcript
 
 
 def make_claude_home_fixture() -> tuple[Path, str]:
     home = Path(tempfile.mkdtemp(prefix="check-please-claude-home-"))
-    usage_dir = home / ".claude" / "usage-data" / "session-meta"
     project_dir = home / ".claude" / "projects" / "demo"
-    usage_dir.mkdir(parents=True, exist_ok=True)
     project_dir.mkdir(parents=True, exist_ok=True)
     session_id = "claude-current-session"
-    (usage_dir / f"{session_id}.json").write_text(
-        json.dumps(
-            {
-                "session_id": session_id,
-                "start_time": "2026-04-27T04:00:00Z",
+    item = {
+        "sessionId": session_id,
+        "timestamp": "2026-04-27T04:00:00Z",
+        "message": {
+            "model": "claude-sonnet-4.5",
+            "usage": {
                 "input_tokens": 12487,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "output_tokens": 3215,
             },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
+        },
+    }
     (project_dir / f"{session_id}.jsonl").write_text(
-        json.dumps({"message": {"model": "claude-sonnet-4.5"}}, ensure_ascii=True) + "\n",
+        json.dumps(item, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
     return home, session_id
-
-
-def make_claude_mtime_tiebreak_fixture() -> tuple[Path, Path]:
-    home = Path(tempfile.mkdtemp(prefix="check-please-claude-mtime-"))
-    usage_dir = home / ".claude" / "usage-data" / "session-meta"
-    usage_dir.mkdir(parents=True, exist_ok=True)
-
-    older = usage_dir / "z-older.json"
-    newer = usage_dir / "a-newer.json"
-
-    older.write_text(
-        json.dumps(
-            {
-                "session_id": "older-session",
-                "start_time": "2026-04-27T04:00:00Z",
-                "input_tokens": 100,
-                "output_tokens": 10,
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-    newer.write_text(
-        json.dumps(
-            {
-                "session_id": "newer-session",
-                "start_time": "2026-04-27T05:00:00Z",
-                "input_tokens": 200,
-                "output_tokens": 20,
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
-
-    # Same integer second, different sub-second mtimes. The later semantic
-    # session should still win via start_time rather than file mtime noise.
-    os.utime(older, (1_777_262_400.900, 1_777_262_400.900))
-    os.utime(newer, (1_777_262_400.100, 1_777_262_400.100))
-    return home, newer
 
 
 def make_codex_thread_fixture() -> tuple[Path, str, Path]:
@@ -333,23 +290,6 @@ def make_codex_thread_fixture() -> tuple[Path, str, Path]:
     os.utime(current_path, (1_777_262_400, 1_777_262_400))
     os.utime(other_path, (1_777_262_700, 1_777_262_700))
     return home, current_thread_id, current_path
-
-
-def make_kimi_kimi_home_fixture() -> tuple[Path, Path]:
-    """Minimal ~/.kimi tree: sessions/<hash>/<id>/context.jsonl + config.toml."""
-    home = Path(tempfile.mkdtemp(prefix="check-please-kimi-home-"))
-    share = home / ".kimi"
-    sess_root = share / "sessions" / "a1deadbeefcafefeedb8a1deadbeefcaf" / "kimi-session-xyz"
-    sess_root.mkdir(parents=True)
-    ctx = sess_root / "context.jsonl"
-    lines = [
-        json.dumps({"role": "_system_prompt", "content": "fixture system prompt"}, ensure_ascii=True),
-        json.dumps({"role": "_usage", "token_count": 1000}, ensure_ascii=True),
-        json.dumps({"role": "_usage", "token_count": 8150}, ensure_ascii=True),
-    ]
-    ctx.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    (share / "config.toml").write_text('default_model = "kimi-k2"\n', encoding="utf-8")
-    return home, ctx
 
 
 def make_opencode_sqlite_fixture() -> tuple[Path, str]:
@@ -404,14 +344,12 @@ def make_opencode_sqlite_fixture() -> tuple[Path, str]:
 
 def main() -> int:
     fixture = make_session_fixture()
-    claude_usage, claude_transcript = make_claude_usage_fixture()
+    claude_transcript = make_claude_transcript_fixture()
     claude_home, claude_session_id = make_claude_home_fixture()
-    claude_mtime_home, expected_newest_usage = make_claude_mtime_tiebreak_fixture()
     codex_home, codex_thread_id, expected_codex_path = make_codex_thread_fixture()
 
     assert runtime_agent_tool({"CODEX_THREAD_ID": "thread"}) == "codex"
     assert runtime_agent_tool({"CLAUDECODE": "1"}) == "claude-code"
-    assert runtime_agent_tool({"KIMI_SESSION_ID": "sess-1"}) == "kimi-code"
     assert runtime_codex_thread_id({"CODEX_THREAD_ID": " thread-x "}) == "thread-x"
     assert runtime_opencode_session_id({"OPENCODE_SESSION_ID": " ses_x "}) == "ses_x"
     assert runtime_agent_tool({"OPENCODE_SESSION_ID": "ses-z"}) == "opencode"
@@ -495,22 +433,6 @@ def main() -> int:
     assert_receipt(trae, 48, ["TRAE", "THANK YOU FOR CODING WITH ChatGPT", "USD ESTIMATE"])
     assert_logo_label_aligned(trae, "TRAE")
 
-    kimi_home, kimi_ctx_path = make_kimi_kimi_home_fixture()
-    kimi_by_session = run_case(
-        "--agent-tool",
-        "kimi-code",
-        "--width",
-        "48",
-        env={**os.environ, "HOME": str(kimi_home), "USERPROFILE": str(kimi_home), "KIMI_SESSION_ID": "kimi-session-xyz"},
-    )
-    assert_receipt(kimi_by_session, 48, ["KIMI CODE", "THANK YOU FOR CODING WITH Kimi", "CONTEXT USED", "8,150"])
-    assert "Input Tokens" not in kimi_by_session
-    assert "UNMAPPED" in kimi_by_session
-    assert_logo_label_aligned(kimi_by_session, "KIMI CODE")
-
-    kimi_direct = run_case("--session", str(kimi_ctx_path), "--agent-tool", "kimi-code", "--width", "48")
-    assert "8,150" in kimi_direct and "KIMI CODE" in kimi_direct
-
     opc_db, opc_sid = make_opencode_sqlite_fixture()
     opc_latest = run_case(
         "--session",
@@ -544,56 +466,17 @@ def main() -> int:
     assert "1,090" in opc_session
     assert "1,190" in opc_session
 
-    qwen = run_case(
-        "--provider", "alibaba",
-        "--agent-tool", "trae",
-        "--model", "qwen3.6-plus",
-        "--input-tokens", "1000000",
-        "--output-tokens", "1000000",
-        "--width", "48",
-    )
-    assert_receipt(qwen, 48, ["THANK YOU FOR CODING WITH Qwen", "CNY ESTIMATE", "¥14.000000", "RATE NOTE"])
-
-    deepseek = run_case(
+    # Chinese-vendor models were removed from the pricing table on purpose:
+    # their receipts must stay honest and show UNMAPPED instead of a price.
+    unpriced_cn = run_case(
         "--provider", "deepseek",
         "--agent-tool", "codex",
         "--model", "deepseek-chat",
         "--input-tokens", "1000000",
-        "--cached-input-tokens", "500000",
         "--output-tokens", "1000000",
         "--width", "48",
     )
-    assert_receipt(deepseek, 48, ["THANK YOU FOR CODING WITH DeepSeek", "USD ESTIMATE", "$0.364000"])
-
-    glm = run_case(
-        "--provider", "bigmodel",
-        "--agent-tool", "generic",
-        "--model", "glm-5-1",
-        "--input-tokens", "1000000",
-        "--output-tokens", "1000000",
-        "--width", "48",
-    )
-    assert_receipt(glm, 48, ["THANK YOU FOR CODING WITH GLM", "CNY ESTIMATE", "¥30.000000", "ALIYUN CN"])
-
-    mimo = run_case(
-        "--provider", "xiaomi",
-        "--agent-tool", "generic",
-        "--model", "mimo-v2.5-pro",
-        "--input-tokens", "1000000",
-        "--output-tokens", "1000000",
-        "--width", "48",
-    )
-    assert_receipt(mimo, 48, ["THANK YOU FOR CODING WITH MiMo", "USD ESTIMATE", "$4.000000", "OPENROUTER"])
-
-    minimax = run_case(
-        "--provider", "minimax",
-        "--agent-tool", "generic",
-        "--model", "minimax-m2.7",
-        "--input-tokens", "1000000",
-        "--output-tokens", "1000000",
-        "--width", "48",
-    )
-    assert_receipt(minimax, 48, ["THANK YOU FOR CODING WITH MiniMax", "USD ESTIMATE", "$1.500000"])
+    assert_receipt(unpriced_cn, 48, ["THANK YOU FOR CODING WITH DeepSeek", "USD ESTIMATE", "UNMAPPED"])
 
     visual_footer_case = run_case(
         "--provider", "openai",
@@ -764,7 +647,7 @@ def main() -> int:
         "--chat-reply",
     )
     assert chat_reply.startswith("```text\n")
-    assert "[Printable HTML](/tmp/check-please.html)" in chat_reply
+    assert f"Printable HTML: {chat_html_target.resolve().as_uri()}" in chat_reply
     assert "CLAUDE CODE" in chat_reply
     assert chat_html_target.exists(), "chat reply mode should always export default printable html"
     chat_saved_html = chat_html_target.read_text(encoding="utf-8")
@@ -774,28 +657,6 @@ def main() -> int:
         language="en",
     )
 
-    share_url = run_case(
-        "--provider", "anthropic",
-        "--agent-tool", "claude-code",
-        "--model", "claude-sonnet-4.5",
-        "--input-tokens", "12487",
-        "--output-tokens", "3215",
-        "--language", "zh",
-        "--output", "share-url",
-        "--share-base", "https://example.test",
-    )
-    assert share_url.startswith("https://example.test/r#"), share_url
-    assert "?" not in share_url.split("#", 1)[0], "share payload must not be in query string"
-    share_payload = decode_share_payload(share_url.split("#", 1)[1])
-    assert share_payload["v"] == 1
-    assert share_payload["kind"] == "single-receipt"
-    assert share_payload["language"] == "zh-TW"
-    assert share_payload["snapshot"]["input_tokens"] == 12487
-    assert share_payload["snapshot"]["output_tokens"] == 3215
-    assert "source" not in share_payload["snapshot"]
-    assert share_payload["estimate"]["status"] == "ESTIMATE"
-    assert share_payload["receipt"]["languages"]["zh-TW"]["language"] == "zh-TW"
-    assert share_payload["receipt"]["tip"]["zh-TW"]["options"][0]["percent"] == 15
 
     claude_env = os.environ.copy()
     claude_env["HOME"] = str(claude_home)
@@ -807,18 +668,8 @@ def main() -> int:
     )
     claude_report = json.loads(claude_fields)
     norm_source = claude_report["source"].replace("\\", "/")
-    assert norm_source.endswith(f"/{claude_session_id}.json")
+    assert norm_source.endswith(f"/{claude_session_id}.jsonl")
     assert claude_report["model"] == "claude-sonnet-4.5"
-
-    original_home = os.environ.get("HOME")
-    try:
-        os.environ["HOME"] = str(claude_mtime_home)
-        assert newest_claude_usage_file() == expected_newest_usage
-    finally:
-        if original_home is None:
-            os.environ.pop("HOME", None)
-        else:
-            os.environ["HOME"] = original_home
 
     codex_env = os.environ.copy()
     codex_env["HOME"] = str(codex_home)
@@ -843,8 +694,10 @@ def main() -> int:
         else:
             os.environ["CODEX_THREAD_ID"] = original_thread
 
+    hook_home = Path(tempfile.mkdtemp(prefix="check-please-hook-home-"))
     hook_env = os.environ.copy()
-    hook_env["TOKEN_RECEIPT_CLAUDE_USAGE_PATH"] = str(claude_usage)
+    hook_env["HOME"] = str(hook_home)
+    hook_env["USERPROFILE"] = str(hook_home)
     hook_payload = {
         "session_id": "claude-hook-session",
         "transcript_path": str(claude_transcript),
@@ -862,7 +715,7 @@ def main() -> int:
     assert "CLAUDE CODE" in hook_json["systemMessage"]
     assert "THANK YOU FOR CODING WITH Claude" in hook_json["systemMessage"]
     assert "claude-sonnet-4.5" in hook_json["systemMessage"]
-    assert "[Printable HTML](/tmp/check-please.html)" in hook_json["systemMessage"]
+    assert f"Printable HTML: {chat_html_target.resolve().as_uri()}" in hook_json["systemMessage"]
 
     settings_dir = Path(tempfile.mkdtemp(prefix="check-please-settings-"))
     settings_path = settings_dir / "settings.json"

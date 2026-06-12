@@ -13,7 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from check_please.hooks import DEFAULT_SETTINGS_PATH, install_session_end_hook  # noqa: E402
+from check_please.hooks import (  # noqa: E402
+    DEFAULT_SETTINGS_PATH,
+    install_session_end_hook,
+    load_receipt_config,
+    save_receipt_config,
+)
 
 
 def main() -> int:
@@ -21,6 +26,16 @@ def main() -> int:
     parser.add_argument("--settings", type=Path, default=DEFAULT_SETTINGS_PATH)
     parser.add_argument("--hook-root", type=Path, help="Override the check-please runtime root used in the hook command.")
     parser.add_argument("--python-bin", default="python3")
+    parser.add_argument(
+        "--session-receipt",
+        choices=("on", "off"),
+        help="Print a receipt for the closing session on SessionEnd (default: on).",
+    )
+    parser.add_argument(
+        "--daily-receipt",
+        choices=("on", "off"),
+        help="Also print the running daily total (all sessions today, per model) on SessionEnd (default: off).",
+    )
     args = parser.parse_args()
 
     result = install_session_end_hook(
@@ -28,6 +43,14 @@ def main() -> int:
         hook_root=args.hook_root,
         python_bin=args.python_bin,
     )
+
+    updates = {}
+    if args.session_receipt is not None:
+        updates["session_receipt"] = args.session_receipt == "on"
+    if args.daily_receipt is not None:
+        updates["daily_receipt"] = args.daily_receipt == "on"
+    result["receipt_config"] = save_receipt_config(updates) if updates else load_receipt_config()
+
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

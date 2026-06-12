@@ -12,7 +12,7 @@
 
 `check-please` 會將今次 AI 對話用咗幾多 token / context，打成一張 monospace 熱敏紙單。
 
-佢唔係 dashboard，亦唔係 spreadsheet。佢會先讀本機真實日誌，再用 `references/pricing.json` 入面嘅價格表估算成本；如果模型未對應到價格，就會老老實實顯示未對應，唔會扮識計。
+佢唔係 dashboard，亦唔係 spreadsheet。佢會先讀本機真實日誌，再用 `check_please/pricing.json` 入面嘅價格表估算成本；如果模型未對應到價格，就會老老實實顯示未對應，唔會扮識計。
 
 ## 預覽
 
@@ -95,14 +95,13 @@ check-please --agent-tool codex --chat-reply
 ```bash
 python3 scripts/check_please.py --agent-tool codex --chat-reply --language cantonese
 python3 scripts/check_please.py --agent-tool claude-code --chat-reply --language cantonese
-python3 scripts/check_please.py --agent-tool kimi-code --chat-reply --language cantonese
 python3 scripts/check_please.py --agent-tool opencode --chat-reply --language cantonese
 ```
 
-輸出可打印 HTML：
+輸出可打印 HTML，並用預設瀏覽器打開：
 
 ```bash
-python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html --language cantonese
+python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html --open-html --language cantonese
 ```
 
 ## 支援軟件
@@ -112,7 +111,7 @@ python3 scripts/check_please.py --agent-tool claude-code --output html --write .
 | Codex | `已支援` | Codex JSONL Session | 直接讀本機 Session 紀錄 |
 | Claude Code | `已支援` | Claude usage-data + projects | Token 用 usage log，Model 用對話紀錄查 |
 | Trae | `而家手動模式` | Trae App Storage | 自動匯入對話紀錄未出 |
-| Kimi Code | `已支援` | kimi-cli `context.jsonl`（`~/.kimi/sessions/` 或 `KIMI_SHARE_DIR`） | 讀累積 `_usage.token_count`；預設唔估 USD 成本；需要分開 input/output 就用手動 flags |
+| Cursor / Manus / Antigravity / 其他 agent | `手動模式` | 冇穩定本地用量日誌 | Agent 自己帶 `--input-tokens` / `--output-tokens`，配 `--agent-tool <host>` 顯示宿主名 |
 | OpenCode | `已支援` | `opencode*.db` SQLite（`~/.local/share/opencode/`，見 `OPENCODE_DATA_DIR`、`XDG_DATA_HOME`） | 讀 `session`/`message` 行；支援 `--scope latest-turn` \| `session` |
 
 ## 注意事項

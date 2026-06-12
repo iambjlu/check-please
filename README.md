@@ -91,14 +91,13 @@ Examples:
 ```bash
 python3 scripts/check_please.py --agent-tool codex --chat-reply
 python3 scripts/check_please.py --agent-tool claude-code --chat-reply
-python3 scripts/check_please.py --agent-tool kimi-code --chat-reply
 python3 scripts/check_please.py --agent-tool opencode --chat-reply
 ```
 
-For a printable HTML file:
+For a printable HTML file that opens in your default browser:
 
 ```bash
-python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html
+python3 scripts/check_please.py --agent-tool claude-code --output html --write ./receipt.html --open-html
 ```
 
 ## Supported Software
@@ -108,7 +107,7 @@ python3 scripts/check_please.py --agent-tool claude-code --output html --write .
 | Codex | `supported now` | Codex JSONL sessions | Reads local session logs directly |
 | Claude Code | `supported now` | Claude usage-data + projects | Uses usage logs for tokens and transcripts for model lookup |
 | Trae | `manual mode now` | Trae app storage | Auto transcript import is not shipped yet |
-| Kimi Code | `supported now` | kimi-cli `context.jsonl` (`~/.kimi/sessions/` or `KIMI_SHARE_DIR`) | Reads cumulative `_usage.token_count`; USD estimate omitted (no API split); use manual flags if you need priced input/output |
+| Cursor / Manus / Antigravity / other agents | `manual mode` | No stable local usage log | Agent passes its own usage via `--input-tokens` / `--output-tokens` with `--agent-tool <host>` for branding |
 | OpenCode | `supported now` | `opencode*.db` SQLite under `~/.local/share/opencode/` (see `OPENCODE_DATA_DIR`, `XDG_DATA_HOME`) | Reads `session`/`message` rows (`message.data` JSON: `tokens`, `modelID`); supports `--scope latest-turn` \| `session` |
 
 ## Notes

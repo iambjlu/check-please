@@ -15,10 +15,13 @@ from .models import (
     COMMON_TOKEN_FIELDS,
     OPTIONAL_TOKEN_FIELDS,
     RECEIPT_TOKEN_FIELDS,
+    ModelCost,
+    ModelUsage,
     PriceEstimate,
     UsageSnapshot,
     as_int,
     normalize,
+    parse_iso,
 )
 
 
@@ -64,49 +67,6 @@ def find_codex_session_for_thread(thread_id: str) -> Optional[Path]:
     return None
 
 
-def iter_claude_usage_files() -> Iterable[Path]:
-    home = Path.home()
-    usage_dir = home / ".claude" / "usage-data" / "session-meta"
-    if not usage_dir.exists():
-        return
-    yield from usage_dir.glob("*.json")
-
-
-def _claude_usage_sort_key(path: Path) -> tuple:
-    """Sort by mtime (1s granularity), then by start_time as tiebreaker.
-
-    Files written in the same batch-sync often differ by sub-millisecond
-    mtime but are semantically unordered.  Bucketing to whole seconds
-    lets the start_time field break ties correctly.
-    """
-    mtime = int(path.stat().st_mtime)
-    start_time = ""
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        start_time = str(data.get("start_time", ""))
-    except (json.JSONDecodeError, OSError):
-        pass
-    return (mtime, start_time)
-
-
-def newest_claude_usage_file() -> Optional[Path]:
-    files = list(iter_claude_usage_files())
-    if not files:
-        return None
-    return max(files, key=_claude_usage_sort_key)
-
-
-def find_claude_usage_for_session(session_id: str) -> Optional[Path]:
-    usage_dir = Path.home() / ".claude" / "usage-data" / "session-meta"
-    if not usage_dir.exists():
-        return None
-    exact = usage_dir / f"{session_id}.json"
-    if exact.exists():
-        return exact
-    return None
-
-
 def iter_claude_transcripts() -> Iterable[Path]:
     projects_dir = Path.home() / ".claude" / "projects"
     if not projects_dir.exists():
@@ -126,23 +86,117 @@ def find_claude_transcript_for_session(session_id: str) -> Optional[Path]:
     return max(matches, key=lambda path: path.stat().st_mtime)
 
 
-def maybe_model_from_claude_transcript(path: Optional[Path]) -> Optional[str]:
-    if not path or not path.exists():
+def newest_claude_transcript() -> Optional[Path]:
+    files = list(iter_claude_transcripts())
+    if not files:
         return None
-    model: Optional[str] = None
+    return max(files, key=lambda path: path.stat().st_mtime)
+
+
+def is_claude_transcript_file(path: Path) -> bool:
+    if path.suffix != ".jsonl" or not path.is_file():
+        return False
+    if "/.claude/projects/" in str(path.resolve()).replace("\\", "/"):
+        return True
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for _ in range(50):
+                line = handle.readline()
+                if not line:
+                    break
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                message = item.get("message")
+                if isinstance(message, dict) and isinstance(message.get("usage"), dict):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def load_snapshot_from_claude_transcript(
+    path: Path,
+    scope: str,
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    turns: list[tuple[Optional[str], str, tuple[int, int, int, int]]] = []
+    session_id = path.stem
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
             try:
                 item = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            message = item.get("message") or {}
+            if not isinstance(item, dict):
+                continue
+            sid = item.get("sessionId")
+            if isinstance(sid, str) and sid.strip():
+                session_id = sid.strip()
+            message = item.get("message")
             if not isinstance(message, dict):
                 continue
-            value = message.get("model")
-            if isinstance(value, str) and value.strip():
-                model = value.strip()
-    return model
+            usage = message.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            raw_model = str(message.get("model") or "")
+            counts = (
+                as_int(usage.get("input_tokens")),
+                as_int(usage.get("cache_read_input_tokens")),
+                as_int(usage.get("cache_creation_input_tokens")),
+                as_int(usage.get("output_tokens")),
+            )
+            # Claude Code writes zero-usage "<synthetic>" rows for UI-only messages.
+            if raw_model.startswith("<") or not any(counts):
+                continue
+            model = raw_model.strip() or "UNRECORDED"
+            turns.append(
+                (
+                    item.get("timestamp") if isinstance(item.get("timestamp"), str) else None,
+                    model,
+                    counts,
+                )
+            )
+
+    if not turns:
+        raise SystemExit(f"No assistant usage records found in Claude transcript {path}")
+
+    selected = turns[-1:] if scope == "latest-turn" else turns
+    uncached = sum(t[2][0] for t in selected)
+    cached = sum(t[2][1] for t in selected)
+    cache_write = sum(t[2][2] for t in selected)
+    output = sum(t[2][3] for t in selected)
+    model = model_override or turns[-1][1]
+    provider = provider_override or infer_provider_from_model(model)
+    # Anthropic usage reports uncached input only; receipt semantics expect
+    # input_tokens to include cached reads and cache writes.
+    input_tokens = uncached + cached + cache_write
+
+    fields = ["input_tokens", "output_tokens", "total_tokens"]
+    if cached:
+        fields.append("cached_input_tokens")
+    if cache_write:
+        fields.append("cache_write_tokens")
+
+    return UsageSnapshot(
+        input_tokens=input_tokens,
+        cached_input_tokens=cached,
+        cache_write_tokens=cache_write,
+        output_tokens=output,
+        reasoning_output_tokens=0,
+        total_tokens=input_tokens + output,
+        provider=str(provider),
+        model=str(model),
+        source=str(path),
+        session_id=session_id,
+        timestamp=turns[-1][0],
+        scope=scope,
+        available_fields=tuple(sorted(set(fields))),
+    )
 
 
 def infer_provider_from_model(model: str) -> str:
@@ -153,8 +207,6 @@ def infer_provider_from_model(model: str) -> str:
         return "anthropic"
     if "gpt" in model_lower or model_lower.startswith("o"):
         return "openai"
-    if "kimi" in model_lower:
-        return "moonshot"
     if "gemini" in model_lower:
         return "google"
     if "deepseek" in model_lower:
@@ -186,189 +238,17 @@ def maybe_model_from_turn_context(payload: Dict[str, Any]) -> Optional[str]:
 
 
 def model_from_env() -> Optional[str]:
-    for key in ("CODEX_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL", "KIMI_MODEL", "MOONSHOT_MODEL", "MODEL"):
+    for key in ("CODEX_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL", "MODEL"):
         value = os.environ.get(key)
         if value:
             return value.strip()
     return None
 
 
-def kimi_share_dir(home: Optional[Path] = None) -> Path:
-    explicit = (os.environ.get("KIMI_SHARE_DIR") or "").strip()
-    if explicit:
-        return Path(os.path.expandvars(os.path.expanduser(explicit)))
-    return (home or Path.home()) / ".kimi"
-
-
-def iter_kimi_context_files() -> Iterable[Path]:
-    base = kimi_share_dir()
-    sessions = base / "sessions"
-    if sessions.is_dir():
-        for work_hash in sessions.iterdir():
-            if not work_hash.is_dir():
-                continue
-            for sess_dir in work_hash.iterdir():
-                # 跳过 subagents/（子 Agent 会话单独存 context）
-                if not sess_dir.is_dir() or sess_dir.name == "subagents":
-                    continue
-                cand = sess_dir / "context.jsonl"
-                if cand.is_file():
-                    yield cand
-    imported = base / "imported_sessions"
-    if imported.is_dir():
-        for sess_dir in imported.iterdir():
-            if not sess_dir.is_dir():
-                continue
-            cand = sess_dir / "context.jsonl"
-            if cand.is_file():
-                yield cand
-
-
-def newest_kimi_context_file() -> Optional[Path]:
-    files = [p for p in iter_kimi_context_files() if p.is_file()]
-    if not files:
-        return None
-    return max(files, key=lambda path: path.stat().st_mtime)
-
-
-def find_kimi_context_for_session(session_id: str) -> Optional[Path]:
-    if not session_id.strip():
-        return None
-    base = kimi_share_dir()
-    candidates: list[Path] = []
-    for sub in ("sessions", "imported_sessions"):
-        root = base / sub
-        if not root.is_dir():
-            continue
-        if sub == "sessions":
-            candidates.extend(root.rglob(f"{session_id}/context.jsonl"))
-        else:
-            exact = root / session_id / "context.jsonl"
-            if exact.is_file():
-                candidates.append(exact)
-    if not candidates:
-        return None
-    return max(candidates, key=lambda path: path.stat().st_mtime)
-
-
-def kimi_config_default_model() -> Optional[str]:
-    path = kimi_share_dir() / "config.toml"
-    if not path.is_file():
-        return None
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line.lower().startswith("default_model"):
-            continue
-        if "=" not in line:
-            continue
-        value = line.split("=", 1)[1].strip()
-        mm = re.match(r'^"(.*)"$', value)
-        if mm:
-            return mm.group(1).strip() or None
-        mm = re.match(r"^'(.*)'$", value)
-        if mm:
-            return mm.group(1).strip() or None
-        return value.strip() or None
-    return None
-
-
-def scan_kimi_context_token_tally(path: Path) -> Optional[int]:
-    last: Optional[int] = None
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict) or obj.get("role") != "_usage":
-                    continue
-                tc = obj.get("token_count")
-                if isinstance(tc, int) and tc >= 0:
-                    last = tc
-    except OSError:
-        return None
-    return last
-
-
-def load_snapshot_from_kimi_context(
-    path: Path,
-    model_override: Optional[str],
-    provider_override: Optional[str],
-) -> UsageSnapshot:
-    tally = scan_kimi_context_token_tally(path)
-    if tally is None:
-        raise SystemExit(
-            f"No valid Kimi `_usage` records (role `_usage` + integer `token_count`) found in {path}. "
-            "If this file is not from Kimi Code CLI, pick a different --session."
-        )
-
-    session_id = path.parent.name
-    model = model_override or model_from_env() or kimi_config_default_model() or "UNRECORDED"
-    provider = provider_override or infer_provider_from_model(model)
-
-    stamp = dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc).isoformat()
-
-    return UsageSnapshot(
-        input_tokens=0,
-        cached_input_tokens=0,
-        cache_write_tokens=0,
-        output_tokens=0,
-        reasoning_output_tokens=0,
-        total_tokens=tally,
-        context_tokens=tally,
-        context_window=None,
-        provider=str(provider),
-        model=str(model),
-        source=str(path),
-        session_id=session_id,
-        timestamp=stamp,
-        scope="session",
-        available_fields=("total_tokens",),
-        skip_price_estimate=True,
-    )
-
-
-def is_kimi_context_file(path: Path) -> bool:
-    if path.name != "context.jsonl" or not path.is_file():
-        return False
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            for _ in range(400):
-                line = handle.readline()
-                if not line:
-                    break
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                role = obj.get("role")
-                if role == "_system_prompt":
-                    return True
-                if role == "_usage" and isinstance(obj.get("token_count"), int):
-                    return True
-    except OSError:
-        return False
-    return False
-
-
 _OPENCODE_VENDOR_TO_PROVIDER = {
     "anthropic": "anthropic",
     "openai": "openai",
     "google": "google",
-    "moonshot": "moonshot",
     "deepseek": "deepseek",
     "zhipu": "zhipu",
     "glm": "zhipu",
@@ -698,49 +578,6 @@ def runtime_opencode_session_id(env: Optional[Mapping[str, str]] = None) -> Opti
     return None
 
 
-def load_snapshot_from_claude_usage(
-    path: Path,
-    model_override: Optional[str],
-    provider_override: Optional[str],
-    transcript_path: Optional[Path] = None,
-) -> UsageSnapshot:
-    with path.open("r", encoding="utf-8") as handle:
-        data = json.load(handle)
-
-    session_id = str(data.get("session_id", path.stem))
-    start_time = data.get("start_time")
-    input_tokens = as_int(data.get("input_tokens"))
-    output_tokens = as_int(data.get("output_tokens"))
-    total_tokens = input_tokens + output_tokens
-    available_fields = ["input_tokens", "output_tokens", "total_tokens"]
-
-    transcript = transcript_path or find_claude_transcript_for_session(session_id)
-    model = (
-        model_override
-        or maybe_model_from_claude_transcript(transcript)
-        or model_from_env()
-        or "UNRECORDED"
-    )
-    provider = provider_override or infer_provider_from_model(model)
-
-    return UsageSnapshot(
-        input_tokens=input_tokens,
-        cached_input_tokens=0,
-        cache_write_tokens=0,
-        output_tokens=output_tokens,
-        reasoning_output_tokens=0,
-        total_tokens=total_tokens,
-        context_window=None,
-        provider=str(provider),
-        model=str(model),
-        source=str(path),
-        session_id=session_id,
-        timestamp=start_time,
-        scope="session",
-        available_fields=tuple(available_fields),
-    )
-
-
 def load_snapshot_from_session(path: Path, scope: str, model_override: Optional[str], provider_override: Optional[str]) -> UsageSnapshot:
     session_meta: Dict[str, Any] = {}
     token_event: Optional[Dict[str, Any]] = None
@@ -834,22 +671,322 @@ def load_manual_snapshot(args: argparse.Namespace) -> UsageSnapshot:
     )
 
 
-def has_manual_usage(args: argparse.Namespace) -> bool:
-    return args.input_tokens is not None or args.output_tokens is not None or args.total_tokens is not None
+class _DailyTally:
+    """Accumulates per-model token usage across the sessions of one local day."""
+
+    def __init__(self) -> None:
+        self.models: Dict[str, Dict[str, Any]] = {}
+        self._session_keys: set[str] = set()
+
+    @property
+    def session_count(self) -> int:
+        return len(self._session_keys)
+
+    def add_session(
+        self,
+        model: str,
+        provider: str,
+        input_tokens: int = 0,
+        cached_input_tokens: int = 0,
+        cache_write_tokens: int = 0,
+        output_tokens: int = 0,
+        reasoning_output_tokens: int = 0,
+        total_tokens: Optional[int] = None,
+        session_key: Optional[str] = None,
+    ) -> None:
+        key = model or "UNRECORDED"
+        bucket = self.models.setdefault(
+            key,
+            {
+                "provider": provider,
+                "input_tokens": 0,
+                "cached_input_tokens": 0,
+                "cache_write_tokens": 0,
+                "output_tokens": 0,
+                "reasoning_output_tokens": 0,
+                "total_tokens": 0,
+                "sessions": 0,
+            },
+        )
+        bucket["input_tokens"] += input_tokens
+        bucket["cached_input_tokens"] += cached_input_tokens
+        bucket["cache_write_tokens"] += cache_write_tokens
+        bucket["output_tokens"] += output_tokens
+        bucket["reasoning_output_tokens"] += reasoning_output_tokens
+        if total_tokens is None:
+            total_tokens = (
+                input_tokens + cached_input_tokens + cache_write_tokens + output_tokens + reasoning_output_tokens
+            )
+        bucket["total_tokens"] += total_tokens
+        bucket["sessions"] += 1
+        self._session_keys.add(session_key if session_key is not None else f"anon-{len(self._session_keys)}")
+
+    def breakdown(self) -> tuple[ModelUsage, ...]:
+        rows = [
+            ModelUsage(
+                model=model,
+                provider=str(data["provider"]),
+                input_tokens=int(data["input_tokens"]),
+                cached_input_tokens=int(data["cached_input_tokens"]),
+                cache_write_tokens=int(data["cache_write_tokens"]),
+                output_tokens=int(data["output_tokens"]),
+                reasoning_output_tokens=int(data["reasoning_output_tokens"]),
+                total_tokens=int(data["total_tokens"]),
+                sessions=int(data["sessions"]),
+            )
+            for model, data in self.models.items()
+        ]
+        return tuple(sorted(rows, key=lambda row: row.total_tokens, reverse=True))
+
+    def to_snapshot(self, day: dt.date, source: str, skip_price_estimate: bool = False) -> UsageSnapshot:
+        breakdown = self.breakdown()
+        if not breakdown:
+            raise SystemExit(f"No sessions with token usage found for {day.isoformat()} in {source}.")
+        totals = {
+            field: sum(getattr(row, field) for row in breakdown)
+            for field in (
+                "input_tokens",
+                "cached_input_tokens",
+                "cache_write_tokens",
+                "output_tokens",
+                "reasoning_output_tokens",
+                "total_tokens",
+            )
+        }
+        fields = [field for field, value in totals.items() if field != "total_tokens" and value > 0]
+        fields.append("total_tokens")
+        top = breakdown[0]
+        return UsageSnapshot(
+            input_tokens=totals["input_tokens"],
+            cached_input_tokens=totals["cached_input_tokens"],
+            cache_write_tokens=totals["cache_write_tokens"],
+            output_tokens=totals["output_tokens"],
+            reasoning_output_tokens=totals["reasoning_output_tokens"],
+            total_tokens=totals["total_tokens"],
+            provider=top.provider,
+            model=top.model,
+            source=source,
+            session_id=f"daily-{day.isoformat()}",
+            timestamp=dt.datetime.now().astimezone().isoformat(),
+            scope="today",
+            available_fields=tuple(sorted(set(fields))),
+            skip_price_estimate=skip_price_estimate,
+            model_breakdown=breakdown,
+            session_count=self.session_count,
+        )
 
 
-def is_claude_usage_file(path: Path) -> bool:
-    if ".claude/usage-data/session-meta" in str(path):
-        return True
-    if path.suffix == ".json":
+def _local_date(value: Optional[str], fallback: Optional[float] = None) -> Optional[dt.date]:
+    parsed = parse_iso(value)
+    if parsed is not None:
+        if parsed.tzinfo is None:
+            return parsed.date()
+        return parsed.astimezone().date()
+    if fallback is not None:
+        return dt.date.fromtimestamp(fallback)
+    return None
+
+
+def load_daily_snapshot_codex(
+    day: dt.date,
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    tally = _DailyTally()
+    for path in iter_session_files():
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if dt.date.fromtimestamp(mtime) != day:
+            continue
+        session_meta: Dict[str, Any] = {}
+        turn_context_model: Optional[str] = None
+        token_event: Optional[Dict[str, Any]] = None
+        token_timestamp: Optional[str] = None
         try:
             with path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-            if "session_id" in data and "input_tokens" in data and "output_tokens" in data:
-                return True
-        except (json.JSONDecodeError, OSError):
-            pass
-    return False
+                for line in handle:
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    item_type = item.get("type")
+                    payload = item.get("payload") or {}
+                    if item_type == "session_meta" and isinstance(payload, dict):
+                        session_meta = payload
+                    if item_type == "turn_context" and isinstance(payload, dict):
+                        turn_context_model = maybe_model_from_turn_context(payload) or turn_context_model
+                    if item_type == "event_msg" and isinstance(payload, dict) and payload.get("type") == "token_count":
+                        token_event = payload
+                        token_timestamp = item.get("timestamp")
+        except OSError:
+            continue
+        if not token_event:
+            continue
+        if _local_date(token_timestamp, mtime) != day:
+            continue
+        usage = (token_event.get("info") or {}).get("total_token_usage") or {}
+        model = (
+            model_override
+            or maybe_model_from_meta(session_meta)
+            or turn_context_model
+            or "UNRECORDED"
+        )
+        provider = provider_override or session_meta.get("model_provider") or infer_provider_from_model(model)
+        tally.add_session(
+            model=str(model),
+            provider=str(provider),
+            input_tokens=as_int(usage.get("input_tokens")),
+            cached_input_tokens=as_int(usage.get("cached_input_tokens")),
+            cache_write_tokens=as_int(usage.get("cache_write_tokens")),
+            output_tokens=as_int(usage.get("output_tokens")),
+            reasoning_output_tokens=as_int(usage.get("reasoning_output_tokens")),
+            total_tokens=as_int(usage.get("total_tokens")) or None,
+            session_key=str(path),
+        )
+    return tally.to_snapshot(day, "codex-sessions")
+
+
+def load_daily_snapshot_claude(
+    day: dt.date,
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    tally = _DailyTally()
+    for path in iter_claude_transcripts():
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        # Sessions are appended live, so only files touched on the target day can hold its usage.
+        if dt.date.fromtimestamp(mtime) < day:
+            continue
+        per_model: Dict[str, list[tuple[int, int, int, int]]] = {}
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    message = item.get("message")
+                    if not isinstance(message, dict):
+                        continue
+                    usage = message.get("usage")
+                    if not isinstance(usage, dict):
+                        continue
+                    if _local_date(item.get("timestamp")) != day:
+                        continue
+                    raw_model = str(message.get("model") or "")
+                    counts = (
+                        as_int(usage.get("input_tokens")),
+                        as_int(usage.get("cache_read_input_tokens")),
+                        as_int(usage.get("cache_creation_input_tokens")),
+                        as_int(usage.get("output_tokens")),
+                    )
+                    # Claude Code writes zero-usage "<synthetic>" rows for UI-only messages.
+                    if raw_model.startswith("<") or not any(counts):
+                        continue
+                    model = model_override or (raw_model.strip() or "UNRECORDED")
+                    per_model.setdefault(model, []).append(counts)
+        except OSError:
+            continue
+        for model, turns in per_model.items():
+            uncached = sum(t[0] for t in turns)
+            cached = sum(t[1] for t in turns)
+            cache_write = sum(t[2] for t in turns)
+            output = sum(t[3] for t in turns)
+            provider = provider_override or infer_provider_from_model(model)
+            tally.add_session(
+                model=model,
+                provider=str(provider),
+                # Anthropic usage reports uncached input only; receipt semantics expect
+                # input_tokens to include cached reads and cache writes.
+                input_tokens=uncached + cached + cache_write,
+                cached_input_tokens=cached,
+                cache_write_tokens=cache_write,
+                output_tokens=output,
+                session_key=str(path),
+            )
+    return tally.to_snapshot(day, "claude-transcripts")
+
+
+def load_daily_snapshot_opencode(
+    day: dt.date,
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    tally = _DailyTally()
+    for db_path in iter_opencode_db_files():
+        try:
+            conn = sqlite3.connect(str(db_path.resolve()), timeout=5.0)
+        except sqlite3.Error:
+            continue
+        try:
+            if not _opencode_db_has_session_message(conn):
+                continue
+            try:
+                rows = conn.execute("SELECT session_id, time_created, data FROM message").fetchall()
+            except sqlite3.Error:
+                continue
+        finally:
+            conn.close()
+        per_session: Dict[tuple[str, str], list[tuple[int, int, int, int, int]]] = {}
+        for session_id, time_created, raw in rows:
+            if not isinstance(raw, str):
+                continue
+            if _local_date(_opencode_iso_from_tc(time_created)) != day:
+                continue
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            tup = _assistant_tokens_from_payload(payload)
+            if tup is None:
+                continue
+            model_cell = payload.get("modelID")
+            mid = model_cell.strip() if isinstance(model_cell, str) else ""
+            per_session.setdefault((str(session_id), mid), []).append(tup)
+        for (session_id, mid), turns in per_session.items():
+            sums = [sum(t[i] for t in turns) for i in range(5)]
+            raw_model = model_override or mid or "UNRECORDED"
+            vendor_provider, slug = provider_and_slug_from_opencode_model(raw_model)
+            provider = provider_override or vendor_provider
+            tally.add_session(
+                model=slug if raw_model != "UNRECORDED" else "UNRECORDED",
+                provider=str(provider),
+                input_tokens=sums[0],
+                cached_input_tokens=sums[1],
+                cache_write_tokens=sums[2],
+                output_tokens=sums[3],
+                reasoning_output_tokens=sums[4],
+                session_key=f"{db_path}:{session_id}",
+            )
+    return tally.to_snapshot(day, "opencode-db")
+
+
+def load_daily_snapshot(agent_tool: Optional[str], args: argparse.Namespace) -> UsageSnapshot:
+    day = dt.date.today()
+    if agent_tool == "claude-code":
+        return load_daily_snapshot_claude(day, args.model, args.provider)
+    if agent_tool == "codex":
+        return load_daily_snapshot_codex(day, args.model, args.provider)
+    if agent_tool == "opencode":
+        return load_daily_snapshot_opencode(day, args.model, args.provider)
+    if agent_tool in MANUAL_ONLY_HOSTS:
+        raise SystemExit(manual_mode_error(agent_tool))
+    raise SystemExit(
+        "Daily scope needs a single software source. "
+        "Pass --agent-tool codex, --agent-tool claude-code, or --agent-tool opencode, "
+        "or run check-please inside the software whose usage you want to bill."
+    )
+
+
+def has_manual_usage(args: argparse.Namespace) -> bool:
+    return args.input_tokens is not None or args.output_tokens is not None or args.total_tokens is not None
 
 
 def trae_storage_hints() -> tuple[str, ...]:
@@ -866,15 +1003,32 @@ def trae_storage_hints() -> tuple[str, ...]:
     )
 
 
-def trae_manual_mode_error() -> str:
-    hints = "\n".join(f"  - {path}" for path in trae_storage_hints())
+# Hosts check-please can brand on the receipt but cannot read usage logs for.
+# The agent running inside these hosts should pass its own usage numbers manually.
+MANUAL_ONLY_HOSTS = ("trae", "cursor", "manus", "antigravity")
+
+
+def manual_mode_error(agent_tool: str) -> str:
+    if agent_tool == "trae":
+        hints = "\n".join(f"  - {path}" for path in trae_storage_hints())
+        return (
+            "Automatic Trae session import is not implemented yet.\n"
+            "Trae stores chat state in app storage and workspace SQLite files rather than simple JSONL session logs.\n"
+            "Known Trae storage locations include:\n"
+            f"{hints}\n"
+            "Use manual mode: provide --input-tokens and --output-tokens."
+        )
+    label = agent_tool or "this host"
     return (
-        "Automatic Trae session import is not implemented yet.\n"
-        "Trae stores chat state in app storage and workspace SQLite files rather than simple JSONL session logs.\n"
-        "Known Trae storage locations include:\n"
-        f"{hints}\n"
-        "Use manual mode for now: provide --input-tokens and --output-tokens."
+        f"Automatic usage import for {label} is not implemented; it does not expose a stable local usage log. "
+        f"Use manual mode: pass the usage you can see in {label} via "
+        "--input-tokens / --output-tokens (and optionally --model / --provider), "
+        f"keeping --agent-tool {label} so the receipt carries the right branding."
     )
+
+
+def trae_manual_mode_error() -> str:
+    return manual_mode_error("trae")
 
 
 def runtime_agent_tool(env: Optional[Mapping[str, str]] = None) -> Optional[str]:
@@ -885,9 +1039,6 @@ def runtime_agent_tool(env: Optional[Mapping[str, str]] = None) -> Optional[str]
         return "codex"
     if any(runtime.get(key) for key in ("TRAE_RUNTIME", "TRAE_IDE", "TRAE_SESSION_ID")):
         return "trae"
-    # Kimi Code CLI / 宿主可注入，便于在非交互环境里自动选型
-    if runtime.get("KIMI_SESSION_ID", "").strip() or runtime.get("KIMI_CODE", "").strip():
-        return "kimi-code"
     if runtime_opencode_session_id(runtime):
         return "opencode"
     return None
@@ -916,7 +1067,7 @@ def requested_agent_tool(args: argparse.Namespace, env: Optional[Mapping[str, st
         return explicit
 
     brand = getattr(args, "brand", None)
-    if brand in ("codex", "claude-code", "trae", "kimi-code", "opencode"):
+    if brand in ("codex", "claude-code", "opencode") + MANUAL_ONLY_HOSTS:
         return brand
 
     return runtime_agent_tool(env)
@@ -926,11 +1077,17 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
     if has_manual_usage(args):
         return load_manual_snapshot(args)
 
+    if args.scope == "today":
+        if args.session:
+            raise SystemExit(
+                "--scope today aggregates every session of the day, so it cannot be combined with --session. "
+                "Drop --session, or use --scope session for a single file."
+            )
+        return load_daily_snapshot(requested_agent_tool(args), args)
+
     if args.session:
-        if is_claude_usage_file(args.session):
-            return load_snapshot_from_claude_usage(args.session, args.model, args.provider)
-        if is_kimi_context_file(args.session):
-            return load_snapshot_from_kimi_context(args.session, args.model, args.provider)
+        if is_claude_transcript_file(args.session):
+            return load_snapshot_from_claude_transcript(args.session, args.scope, args.model, args.provider)
         if is_opencode_database_file(args.session):
             ses = (getattr(args, "opencode_session_id", None) or "").strip() or runtime_opencode_session_id()
             if not ses:
@@ -946,17 +1103,15 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
     agent_tool = requested_agent_tool(args)
 
     if agent_tool == "claude-code":
-        claude_path = None
         session_id = runtime_claude_session_id()
-        if session_id:
-            claude_path = find_claude_usage_for_session(session_id)
-        if claude_path is None:
-            claude_path = newest_claude_usage_file()
-        if claude_path:
-            return load_snapshot_from_claude_usage(claude_path, args.model, args.provider)
+        transcript = find_claude_transcript_for_session(session_id) if session_id else None
+        if transcript is None:
+            transcript = newest_claude_transcript()
+        if transcript:
+            return load_snapshot_from_claude_transcript(transcript, args.scope, args.model, args.provider)
         raise SystemExit(
-            "No Claude Code usage log found under ~/.claude/usage-data/session-meta. "
-            "If you are on Windows, the equivalent home-relative path is %USERPROFILE%\\.claude\\usage-data\\session-meta."
+            "No Claude Code transcripts found under ~/.claude/projects. "
+            "If you are on Windows, the equivalent home-relative path is %USERPROFILE%\\.claude\\projects."
         )
 
     if agent_tool == "codex":
@@ -971,21 +1126,6 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
         raise SystemExit(
             "No Codex session file found under ~/.codex/sessions or ~/.codex/archived_sessions. "
             "If you are on Windows, the equivalent home-relative paths are %USERPROFILE%\\.codex\\sessions and %USERPROFILE%\\.codex\\archived_sessions."
-        )
-
-    if agent_tool == "kimi-code":
-        kimi_path = None
-        sid = os.environ.get("KIMI_SESSION_ID", "").strip()
-        if sid:
-            kimi_path = find_kimi_context_for_session(sid)
-        if kimi_path is None:
-            kimi_path = newest_kimi_context_file()
-        if kimi_path:
-            return load_snapshot_from_kimi_context(kimi_path, args.model, args.provider)
-        share = kimi_share_dir()
-        raise SystemExit(
-            f"No Kimi Code context.jsonl found under {share / 'sessions'} or {share / 'imported_sessions'}. "
-            "Try --session <path/to/context.jsonl>, export with `kimi export`, or pass manual --input-tokens/--output-tokens."
         )
 
     if agent_tool == "opencode":
@@ -1008,12 +1148,11 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
             "Install sessions with OpenCode CLI, or set OPENCODE_DATA_DIR / XDG_DATA_HOME, or use manual token flags."
         )
 
-    if agent_tool == "trae":
-        raise SystemExit(trae_manual_mode_error())
+    if agent_tool in MANUAL_ONLY_HOSTS:
+        raise SystemExit(manual_mode_error(agent_tool))
 
     codex_path = newest_session_file()
-    claude_path = newest_claude_usage_file()
-    kimi_path = newest_kimi_context_file()
+    claude_path = newest_claude_transcript()
     opencode_ref = global_newest_opencode_session()
 
     sources = []
@@ -1021,8 +1160,6 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
         sources.append(("codex", codex_path))
     if claude_path:
         sources.append(("claude-code", claude_path))
-    if kimi_path:
-        sources.append(("kimi-code", kimi_path))
     if opencode_ref:
         sources.append(("opencode", opencode_ref))
 
@@ -1030,23 +1167,21 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
         source_type, path = sources[0]
         if source_type == "codex":
             return load_snapshot_from_session(path, args.scope, args.model, args.provider)
-        if source_type == "kimi-code":
-            return load_snapshot_from_kimi_context(path, args.model, args.provider)
         if source_type == "opencode":
             db_p, sid_o = path  # type: ignore[misc]
             return load_snapshot_from_opencode_sqlite(db_p, sid_o, args.scope, args.model, args.provider)
-        return load_snapshot_from_claude_usage(path, args.model, args.provider)
+        return load_snapshot_from_claude_transcript(path, args.scope, args.model, args.provider)
 
     if len(sources) > 1:
         raise SystemExit(
             "Multiple software logs are available locally. "
-            "Pass --agent-tool codex, --agent-tool claude-code, --agent-tool kimi-code, --agent-tool opencode, "
+            "Pass --agent-tool codex, --agent-tool claude-code, --agent-tool opencode, "
             "or run check-please inside the software whose conversation you want to bill. "
             "check-please does not guess across software."
         )
 
     raise SystemExit(
-        "No Codex, Claude Code, Kimi Code, or OpenCode session logs found locally. "
+        "No Codex, Claude Code, or OpenCode session logs found locally. "
         "For Trae, automatic import is not implemented yet; provide --input-tokens and --output-tokens for manual mode."
     )
 
@@ -1075,37 +1210,100 @@ def find_price(pricing: Dict[str, Any], provider: str, model: str) -> Optional[D
     return None
 
 
-def estimate_cost(snapshot: UsageSnapshot, pricing_path: Path) -> PriceEstimate:
-    # Kimi context.jsonl 只有上下文累计 token_count，不能直接套 API 分项单价
-    if snapshot.skip_price_estimate:
-        return PriceEstimate(status="UNMAPPED", amount=None)
-
-    pricing = load_pricing(pricing_path)
-    entry = find_price(pricing, snapshot.provider, snapshot.model)
-    if not entry:
-        return PriceEstimate(status="UNMAPPED", amount=None)
-
-    cached = min(snapshot.cached_input_tokens, snapshot.input_tokens)
-    cache_write = min(snapshot.cache_write_tokens, max(snapshot.input_tokens - cached, 0))
-    uncached = max(snapshot.input_tokens - cached - cache_write, 0)
+def _priced_amount(
+    entry: Dict[str, Any],
+    input_tokens: int,
+    cached_input_tokens: int,
+    cache_write_tokens: int,
+    output_tokens: int,
+    reasoning_output_tokens: int,
+) -> float:
+    cached = min(cached_input_tokens, input_tokens)
+    cache_write = min(cache_write_tokens, max(input_tokens - cached, 0))
+    uncached = max(input_tokens - cached - cache_write, 0)
 
     input_rate = float(entry.get("input_per_million", 0.0))
     cached_rate = float(entry.get("cached_input_per_million", input_rate))
     cache_write_rate = float(entry.get("cache_write_5m_per_million", input_rate))
     output_rate = float(entry.get("output_per_million", 0.0))
 
-    amount = (
+    return (
         uncached * input_rate
         + cached * cached_rate
         + cache_write * cache_write_rate
-        + (snapshot.output_tokens + snapshot.reasoning_output_tokens) * output_rate
+        + (output_tokens + reasoning_output_tokens) * output_rate
     ) / 1_000_000
+
+
+def estimate_cost(snapshot: UsageSnapshot, pricing_path: Path) -> PriceEstimate:
+    # Sources that only record cumulative context tallies cannot be priced per token split.
+    if snapshot.skip_price_estimate:
+        return PriceEstimate(status="UNMAPPED", amount=None)
+
+    pricing = load_pricing(pricing_path)
+    currency = str(pricing.get("currency", "USD")).upper()
+
+    if snapshot.model_breakdown:
+        costs: list[ModelCost] = []
+        totals: Dict[str, float] = {}
+        mapped_entries = []
+        for usage in snapshot.model_breakdown:
+            entry = find_price(pricing, usage.provider, usage.model)
+            if not entry:
+                costs.append(ModelCost(model=usage.model, provider=usage.provider))
+                continue
+            entry_currency = str(entry.get("currency", currency)).upper()
+            amount = _priced_amount(
+                entry,
+                usage.input_tokens,
+                usage.cached_input_tokens,
+                usage.cache_write_tokens,
+                usage.output_tokens,
+                usage.reasoning_output_tokens,
+            )
+            costs.append(
+                ModelCost(
+                    model=str(entry.get("model", usage.model)),
+                    provider=usage.provider,
+                    amount=amount,
+                    currency=entry_currency,
+                )
+            )
+            totals[entry_currency] = totals.get(entry_currency, 0.0) + amount
+            mapped_entries.append(entry)
+        if not mapped_entries:
+            return PriceEstimate(status="UNMAPPED", amount=None, breakdown=tuple(costs))
+        primary_currency = currency if currency in totals else max(totals, key=lambda key: totals[key])
+        single = mapped_entries[0] if len(snapshot.model_breakdown) == 1 else None
+        return PriceEstimate(
+            status="ESTIMATE",
+            amount=totals[primary_currency],
+            model=str(single.get("model", snapshot.model)) if single else f"{len(snapshot.model_breakdown)} MODELS",
+            currency=str(single.get("currency", primary_currency)).upper() if single else primary_currency,
+            source_url=str(single.get("source_url", "")) if single else "",
+            source_checked_at=str(single.get("source_checked_at", "")) if single else "",
+            rate_note=str(single.get("rate_note", "")) if single else "",
+            breakdown=tuple(costs),
+        )
+
+    entry = find_price(pricing, snapshot.provider, snapshot.model)
+    if not entry:
+        return PriceEstimate(status="UNMAPPED", amount=None)
+
+    amount = _priced_amount(
+        entry,
+        snapshot.input_tokens,
+        snapshot.cached_input_tokens,
+        snapshot.cache_write_tokens,
+        snapshot.output_tokens,
+        snapshot.reasoning_output_tokens,
+    )
 
     return PriceEstimate(
         status="ESTIMATE",
         amount=amount,
         model=str(entry.get("model", snapshot.model)),
-        currency=str(entry.get("currency", pricing.get("currency", "USD"))).upper(),
+        currency=str(entry.get("currency", currency)).upper(),
         source_url=str(entry.get("source_url", "")),
         source_checked_at=str(entry.get("source_checked_at", "")),
         rate_note=str(entry.get("rate_note", "")),
@@ -1146,8 +1344,7 @@ def available_fields_report(snapshot: UsageSnapshot) -> Dict[str, Any]:
         ],
     }
     if snapshot.skip_price_estimate:
-        report["usd_estimate_note"] = "skipped: kimi context.jsonl only stores cumulative context token tallies"
-        report["kimi_context_roles_expected"] = ["_system_prompt", "_usage", "_checkpoint", "assistant/user messages"]
+        report["usd_estimate_note"] = "skipped: source only stores cumulative context token tallies"
     if snapshot.context_tokens is not None:
         report["context_snapshot_tokens_last_usage"] = snapshot.context_tokens
     return report

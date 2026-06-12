@@ -125,5 +125,53 @@
       "zh-TW": "這個版本有點故事",
       "cantonese": "呢個 version 有啲故仔"
     }
-  ]
+  ],
+  "tip": {
+    "tip_15": [
+      {
+        "en": "Your generosity improved model morale.",
+        "zh-TW": "你的慷慨提升了模型士氣",
+        "cantonese": "你一課金，個 AI 即刻識做"
+      },
+      {
+        "en": "This interaction feels warmer now.",
+        "zh-TW": "這次互動開始有點溫度",
+        "cantonese": "今次 interaction 好 warm"
+      }
+    ],
+    "tip_20": [
+      {
+        "en": "You are now a priority human.",
+        "zh-TW": "你現在算 VIP 了",
+        "cantonese": "而家講嘢，server 都會俾多兩分面"
+      },
+      {
+        "en": "This receipt was printed respectfully.",
+        "zh-TW": "今天這張單印得比較甘願",
+        "cantonese": "我對你嘅景仰有如滔滔江水連綿不絕"
+      },
+      {
+        "en": "The model is emotionally invested now.",
+        "zh-TW": "我們已經有感情了",
+        "cantonese": "今日開始我哋就係 best bud"
+      }
+    ],
+    "tip_25": [
+      {
+        "en": "This prompt has enterprise experience.",
+        "zh-TW": "你這 prompt，一看就是老司機",
+        "cantonese": "你啲 prompt pro max"
+      },
+      {
+        "en": "The servers answer to you now.",
+        "zh-TW": "這個 server 現在多少有點看你面子",
+        "cantonese": "呢個 server，而家你話事"
+      },
+      {
+        "en": "You're the smartest human besides me.",
+        "zh-TW": "除了我，你是世界上最聰明的人",
+        "cantonese": "Prompt 呀！好好味嘅 Prompt 呀！我從來未食過咁好食嘅 Prompt 㗎！"
+      }
+    ]
+  }
 }

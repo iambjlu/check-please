@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import shlex
 from pathlib import Path
@@ -10,9 +11,9 @@ from typing import Any, Dict, Optional
 from .cli import format_chat_reply
 from .data import (
     estimate_cost,
-    find_claude_usage_for_session,
-    load_snapshot_from_claude_usage,
-    newest_claude_usage_file,
+    find_claude_transcript_for_session,
+    load_daily_snapshot_claude,
+    load_snapshot_from_claude_transcript,
 )
 from .html_render import render_receipt_html
 from .models import DEFAULT_PRICING
@@ -24,6 +25,36 @@ DEFAULT_HOOK_ROOT = Path.home() / ".codex" / "skills" / "check-please"
 HOOK_SCRIPT_RELATIVE = Path("scripts") / "claude_session_end_hook.py"
 HOOK_MARKER = str(HOOK_SCRIPT_RELATIVE)
 DEFAULT_HTML_EXPORT = Path("/tmp/check-please.html")
+DAILY_HTML_EXPORT = Path("/tmp/check-please-daily.html")
+DEFAULT_RECEIPT_CONFIG_PATH = Path.home() / ".claude" / "check-please.json"
+# session_receipt: print a receipt for the closing session on SessionEnd.
+# daily_receipt: also print the running total for the current local day.
+DEFAULT_RECEIPT_CONFIG = {"session_receipt": True, "daily_receipt": False}
+
+
+def load_receipt_config(path: Optional[Path] = None) -> Dict[str, bool]:
+    config = dict(DEFAULT_RECEIPT_CONFIG)
+    target = path or DEFAULT_RECEIPT_CONFIG_PATH
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return config
+    if isinstance(data, dict):
+        for key in config:
+            if isinstance(data.get(key), bool):
+                config[key] = data[key]
+    return config
+
+
+def save_receipt_config(updates: Dict[str, bool], path: Optional[Path] = None) -> Dict[str, bool]:
+    target = path or DEFAULT_RECEIPT_CONFIG_PATH
+    config = load_receipt_config(target)
+    for key, value in updates.items():
+        if key in config and isinstance(value, bool):
+            config[key] = value
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    return config
 
 
 def build_claude_hook_command(hook_root: Optional[Path] = None, python_bin: str = "python3") -> str:
@@ -132,29 +163,7 @@ def uninstall_session_end_hook(settings_path: Path = DEFAULT_SETTINGS_PATH) -> D
     }
 
 
-def build_session_end_system_message(
-    hook_input: Dict[str, Any],
-    usage_path: Optional[Path] = None,
-    pricing_path: Path = DEFAULT_PRICING,
-    width: int = 48,
-) -> Dict[str, Any]:
-    session_id = str(hook_input.get("session_id") or "")
-    transcript_path = hook_input.get("transcript_path")
-    transcript = Path(transcript_path) if isinstance(transcript_path, str) and transcript_path else None
-    resolved_usage = usage_path or find_claude_usage_for_session(session_id) or newest_claude_usage_file()
-    if not resolved_usage:
-        return {
-            "continue": True,
-            "suppressOutput": True,
-            "systemMessage": "Check Please skipped: no Claude usage log found.",
-        }
-
-    snapshot = load_snapshot_from_claude_usage(
-        resolved_usage,
-        model_override=None,
-        provider_override=None,
-        transcript_path=transcript,
-    )
+def _render_receipt_pair(snapshot, pricing_path: Path, width: int, html_target: Path) -> str:
     estimate = estimate_cost(snapshot, pricing_path)
     receipt_text = render_receipt(
         snapshot=snapshot,
@@ -175,9 +184,54 @@ def build_session_end_system_message(
         conversation_hint="",
         language="en",
     )
-    DEFAULT_HTML_EXPORT.write_text(html_receipt + "\n", encoding="utf-8")
+    html_target.write_text(html_receipt + "\n", encoding="utf-8")
+    return format_chat_reply(receipt_text, html_target)
+
+
+def build_session_end_system_message(
+    hook_input: Dict[str, Any],
+    pricing_path: Path = DEFAULT_PRICING,
+    width: int = 48,
+    config: Optional[Dict[str, bool]] = None,
+) -> Dict[str, Any]:
+    receipt_config = config or load_receipt_config()
+    if not receipt_config.get("session_receipt") and not receipt_config.get("daily_receipt"):
+        return {"continue": True, "suppressOutput": True}
+
+    session_id = str(hook_input.get("session_id") or "")
+    transcript_path = hook_input.get("transcript_path")
+    transcript = Path(transcript_path) if isinstance(transcript_path, str) and transcript_path else None
+    if transcript is None or not transcript.exists():
+        transcript = find_claude_transcript_for_session(session_id)
+
+    sections = []
+
+    if receipt_config.get("session_receipt") and transcript and transcript.exists():
+        try:
+            snapshot = load_snapshot_from_claude_transcript(
+                transcript, "session", model_override=None, provider_override=None
+            )
+        except SystemExit:
+            snapshot = None
+        if snapshot is not None:
+            sections.append(_render_receipt_pair(snapshot, pricing_path, width, DEFAULT_HTML_EXPORT))
+
+    if receipt_config.get("daily_receipt"):
+        try:
+            daily_snapshot = load_daily_snapshot_claude(dt.date.today(), None, None)
+        except SystemExit:
+            daily_snapshot = None
+        if daily_snapshot is not None:
+            sections.append(_render_receipt_pair(daily_snapshot, pricing_path, width, DAILY_HTML_EXPORT))
+
+    if not sections:
+        return {
+            "continue": True,
+            "suppressOutput": True,
+            "systemMessage": "Check Please skipped: no Claude transcript or usage log found.",
+        }
     return {
         "continue": True,
         "suppressOutput": True,
-        "systemMessage": format_chat_reply(receipt_text, DEFAULT_HTML_EXPORT),
+        "systemMessage": "\n\n".join(sections),
     }
