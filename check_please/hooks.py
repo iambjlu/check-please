@@ -8,7 +8,7 @@ import shlex
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .cli import format_chat_reply
+from .cli import format_chat_reply, open_in_default_browser
 from .data import (
     estimate_cost,
     find_claude_transcript_for_session,
@@ -185,6 +185,7 @@ def _render_receipt_pair(snapshot, pricing_path: Path, width: int, html_target: 
         language="en",
     )
     html_target.write_text(html_receipt + "\n", encoding="utf-8")
+    open_in_default_browser(html_target)
     return format_chat_reply(receipt_text, html_target)
 
 
