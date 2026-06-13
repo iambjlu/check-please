@@ -39,6 +39,7 @@
 總數                               15,702 Tokens
 ────────────────────────────────────────────────
 USD 估算                               $0.062851
+TWD 估算                               NT$1.96
 價格對應                       claude-sonnet-4.5
 價格日期                              2026-06-12
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -79,18 +80,36 @@ check-please --agent-tool claude-code --chat-reply --language cantonese
 - `埋單` / `結帳` / `發票` / `打單`
 - `token 收據` / `AI 用量帳單` / `把今次對話打成收據`
 - 全日單：`今日用咗幾多 token` / `全日用量單` / `成日用咗幾多`
+- 歷史總埋單：`全機歷史用量` / `all-time usage`
 
-例子：
+### 直接行（唔使透過 Claude）
+
+裝好之後可以直接喺 terminal 行，完全唔使 Claude：
 
 ```bash
-# 單一對話（文字收據 + 可列印 HTML 會用系統瀏覽器打開）
-python3 scripts/check_please.py --agent-tool claude-code --chat-reply --language cantonese
+# 裝（得裝一次）
+python3 -m pip install -e /path/to/check-please
 
-# 全日埋單：今日所有會話，每個模型一行
-python3 scripts/check_please.py --agent-tool claude-code --scope today --chat-reply --language cantonese
+# 最新一輪
+python -m check_please.cli --agent-tool claude-code --language cantonese
 
-# 直接出 HTML 並喺瀏覽器打開
-python3 scripts/check_please.py --agent-tool claude-code --write-html ./receipt.html --open-html
+# 整個 session
+python -m check_please.cli --agent-tool claude-code --scope session --language cantonese
+
+# 今日埋單
+python -m check_please.cli --agent-tool claude-code --scope today --language cantonese
+
+# 整台電腦歷史總埋單
+python -m check_please.cli --agent-tool claude-code --scope all-time --language cantonese
+
+# 出 HTML 並喺瀏覽器打開
+python -m check_please.cli --agent-tool claude-code --language cantonese --write-html ./receipt.html --open-html
+```
+
+或者用 `scripts/check_please.py`：
+
+```bash
+python3 scripts/check_please.py --agent-tool claude-code --scope all-time --language cantonese --chat-reply
 ```
 
 ## HTML 預覽
@@ -111,6 +130,20 @@ HTML 收據係一個獨立檔案（樣式同功能全部內嵌，唔使連網都
 - 表頭唔用工具 logo，改用「全日埋單」標題，摘要顯示傾咗幾多場。
 - 跨午夜嘅會話只計時間戳落喺今日嘅訊息（Codex 例外：佢嘅日誌係會話累計，按最後事件日期歸帳）。
 
+## 歷史總埋單
+
+`--scope all-time` 攬埋呢台電腦上所有曾記錄嘅會話，唔限日期：
+
+- 每個模型一行；支援 claude-code、codex、opencode。
+- 表頭顯示「歷史總埋單」，唔顯示工具 logo。
+- 用法同 `--scope today` 一樣，唔可以同 `--session` 一齊用。
+
+## 台幣價格
+
+收據價格區塊喺 USD 估算下面會自動附上台幣換算（`TWD 估算`），匯率寫死係 **31.2**，定義喺 `check_please/pricing.json` 嘅 `twd_rate` 欄位，可以自己改。
+
+只有 USD 計價嘅模型先會顯示 TWD 換算；`UNMAPPED` 嘅模型唔換算。
+
 ## 自動出單（Claude Code）
 
 會話結束時自動出收據。兩張單都可以喺 `~/.claude/check-please.json` 自行開關：
@@ -125,14 +158,16 @@ python3 scripts/uninstall_claude_auto_trigger.py
 
 | 工具 | 狀態 | 數據來源 | 備註 |
 | --- | --- | --- | --- |
-| Claude Code | `已支援` | `~/.claude/projects` transcripts | 逐訊息用量，連 cache 讀寫分項；`latest-turn` / `session` / `today` |
-| Codex | `已支援` | Codex JSONL sessions | `token_count` 事件；`latest-turn` / `session` / `today` |
-| OpenCode | `已支援` | `opencode*.db` SQLite | assistant 訊息嘅 tokens + `modelID`；全部 scope |
+| Claude Code | `已支援` | `~/.claude/projects` transcripts | 逐訊息用量，連 cache 讀寫分項；`latest-turn` / `session` / `today` / `all-time` |
+| Codex | `已支援` | Codex JSONL sessions | `token_count` 事件；`latest-turn` / `session` / `today` / `all-time` |
+| OpenCode | `已支援` | `opencode*.db` SQLite | assistant 訊息嘅 tokens + `modelID`；全部 scope 含 `all-time` |
 | Cursor / Manus / Antigravity / Trae / 其他 agent | `手動模式` | 冇穩定本地用量日誌 | Agent 自己帶 `--input-tokens` / `--output-tokens`，配 `--agent-tool <host>` 顯示返個工具名 |
 
 ## 價格
 
 `check_please/pricing.json` 係唯一價格來源，收錄 Anthropic / OpenAI / Google 官方價格（連已公開嘅 cache 價格）。其餘模型一律顯示 `UNMAPPED` —— 誠實行先。
+
+入面有 `"twd_rate": 31.2`，用嚟計台幣換算行（`TWD 估算`）。直接改呢個數就可以改匯率。
 
 ---
 

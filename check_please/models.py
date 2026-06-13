@@ -89,6 +89,8 @@ class PriceEstimate:
     source_url: str = ""
     source_checked_at: str = ""
     rate_note: str = ""
+    twd_amount: Optional[float] = None
+    twd_rate: Optional[float] = None
     # Daily scope: per-model pricing, kept per vendor so different vendors
     # (and currencies) are totalled separately.
     breakdown: Tuple[ModelCost, ...] = ()

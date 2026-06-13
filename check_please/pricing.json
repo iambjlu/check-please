@@ -1,6 +1,7 @@
 {
   "checked_at": "2026-06-12",
   "currency": "USD",
+  "twd_rate": 31.2,
   "unit": "per_1m_tokens",
   "notes": [
     "Prices are estimates from official provider pricing pages. They are not billing records.",
@@ -488,6 +489,7 @@
       "aliases": [
         "claude-haiku-4.5",
         "claude haiku 4.5",
+        "claude-haiku-4-5-20251001",
         "haiku 4.5"
       ],
       "input_per_million": 1.0,
@@ -678,6 +680,36 @@
       "rate_note": "Deprecated and shut down June 1, 2026; retained for old receipts",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
       "source_checked_at": "2026-06-08"
+    },
+    {
+      "provider": "alibaba",
+      "model": "qwen/qwen3.6-27b",
+      "aliases": [
+        "qwen/qwen3.6-27b",
+        "qwen3.6-27b",
+        "qwen 3.6 27b"
+      ],
+      "input_per_million": 3.0,
+      "cached_input_per_million": 0.3,
+      "output_per_million": 15.0,
+      "source_url": "",
+      "source_checked_at": "2026-06-13"
+    },
+    {
+      "provider": "alibaba",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "aliases": [
+        "qwen/qwen3.6-35b-a3b",
+        "qwen3.6-35b-a3b",
+        "qwen 3.6 35b a3b",
+        "mlx-community/Qwen3.6-35B-A3B-4bit",
+        "mlx-community/qwen3.6-35b-a3b-4bit"
+      ],
+      "input_per_million": 3.0,
+      "cached_input_per_million": 0.3,
+      "output_per_million": 15.0,
+      "source_url": "",
+      "source_checked_at": "2026-06-13"
     }
   ]
 }

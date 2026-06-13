@@ -60,6 +60,8 @@ LABELS = {
         "models": "{count} MODELS",
         "daily_logo": "DAILY TOTAL",
         "daily_thanks": "THANK YOU FOR CODING TODAY",
+        "alltime_logo": "ALL-TIME TOTAL",
+        "alltime_thanks": "THANK YOU FOR ALL THE CODE",
     },
     "zh-TW": {
         "generic_logo": "[ AI 結帳 ]",
@@ -87,6 +89,8 @@ LABELS = {
         "models": "{count} 個模型",
         "daily_logo": "全日帳單",
         "daily_thanks": "感謝今天也好好寫了 code",
+        "alltime_logo": "歷史總帳單",
+        "alltime_thanks": "感謝這台電腦上每一行 code",
     },
     "cantonese": {
         "generic_logo": "[ AI 埋單 ]",
@@ -114,6 +118,8 @@ LABELS = {
         "models": "{count} 個模型",
         "daily_logo": "全日埋單",
         "daily_thanks": "多謝今日咁勤力寫 code",
+        "alltime_logo": "歷史總埋單",
+        "alltime_thanks": "多謝你呢台電腦每行 code",
     },
 }
 
@@ -122,6 +128,7 @@ LABELS = {
 class ReceiptRow:
     label: str
     value: str
+    separator: str = ""  # "" = normal row, "blank" = empty line, "light" = light rule
 
 
 @dataclass(frozen=True)
@@ -514,12 +521,16 @@ def currency_symbol(currency: str) -> str:
         return "$"
     if key in ("CNY", "RMB"):
         return "¥"
+    if key == "TWD":
+        return "NT$"
     return f"{key} "
 
 
 def money(amount: float | None, currency: str = "USD") -> str:
     if amount is None:
         return "UNMAPPED"
+    if currency.upper() == "TWD":
+        return f"{currency_symbol(currency)}{amount:.2f}"
     if 0 < amount < 0.000001:
         return f"<{currency_symbol(currency)}0.000001"
     return f"{currency_symbol(currency)}{amount:.6f}"
@@ -575,17 +586,25 @@ def build_receipt_view(
 
     pricing_rows = []
     if len(breakdown) > 1 and estimate.breakdown:
-        # One price line per model, then one total per currency (currencies never mix).
-        for cost in estimate.breakdown:
+        # One price line per model (+ TWD inline), blank between models, light rule before totals.
+        for i, cost in enumerate(estimate.breakdown):
+            if i > 0:
+                pricing_rows.append(ReceiptRow("", "", separator="blank"))
             value = money(cost.amount, cost.currency) if cost.amount is not None else labels["unmapped"]
             pricing_rows.append(ReceiptRow(cost.model, value))
+            if cost.amount is not None and cost.currency == "USD" and estimate.twd_rate:
+                twd_val = round(cost.amount * estimate.twd_rate, 2)
+                pricing_rows.append(ReceiptRow(f"  ({labels['estimate'].format(currency='TWD')})", money(twd_val, "TWD")))
         currency_totals: dict[str, float] = {}
         for cost in estimate.breakdown:
             if cost.amount is not None:
                 currency_totals[cost.currency] = currency_totals.get(cost.currency, 0.0) + cost.amount
         if currency_totals:
+            pricing_rows.append(ReceiptRow("", "", separator="light"))
             for cur, amount in currency_totals.items():
                 pricing_rows.append(ReceiptRow(labels["estimate"].format(currency=cur), money(amount, cur)))
+            if estimate.twd_amount is not None:
+                pricing_rows.append(ReceiptRow(labels["estimate"].format(currency="TWD"), money(estimate.twd_amount, "TWD")))
         else:
             pricing_rows.append(
                 ReceiptRow(labels["estimate"].format(currency=estimate.currency), money(None))
@@ -594,6 +613,10 @@ def build_receipt_view(
         pricing_rows.append(
             ReceiptRow(labels["estimate"].format(currency=estimate.currency), money(estimate.amount, estimate.currency))
         )
+        if estimate.twd_amount is not None:
+            pricing_rows.append(
+                ReceiptRow(labels["estimate"].format(currency="TWD"), money(estimate.twd_amount, "TWD"))
+            )
         pricing_rows.append(
             ReceiptRow(labels["price"], labels["unmapped"] if estimate.status == "UNMAPPED" else estimate.model)
         )
@@ -603,13 +626,16 @@ def build_receipt_view(
             if estimate.rate_note:
                 pricing_rows.append(ReceiptRow(labels["rate_note"], estimate.rate_note))
 
-    daily = snapshot.scope == "today"
-    if daily:
+    if snapshot.scope == "today":
         # A whole-day bill spans sessions (and possibly models), so the host
         # logo would be misleading — use a daily masthead instead.
         logo_lines: Tuple[str, ...] = ()
         logo_label = labels["daily_logo"]
         thanks_line = labels["daily_thanks"]
+    elif snapshot.scope == "all-time":
+        logo_lines = ()
+        logo_label = labels["alltime_logo"]
+        thanks_line = labels["alltime_thanks"]
     else:
         logo_lines, logo_label, _ = logo_block(agent_tool, language)
         thanks_line = labels["thanks"].format(product=product_name(snapshot))
@@ -665,7 +691,12 @@ def render_receipt(
     receipt.kv(view.total_row.label, view.total_row.value)
     receipt.light_rule()
     for row in view.pricing_rows:
-        receipt.kv(row.label, row.value)
+        if row.separator == "blank":
+            receipt.blank()
+        elif row.separator == "light":
+            receipt.light_rule()
+        else:
+            receipt.kv(row.label, row.value)
     receipt.strong_rule()
     for line in view.footer_lines:
         receipt.center(line)

@@ -41,6 +41,7 @@ Cache Write Tokens                         1,024
 TOTAL                              15,702 TOKENS
 ────────────────────────────────────────────────
 USD ESTIMATE                           $0.062851
+TWD ESTIMATE                           NT$1.96
 PRICE                          claude-sonnet-4.5
 PRICE DATE                            2026-06-12
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -81,21 +82,36 @@ Say one of these in chat, or run the CLI directly:
 - `埋單` / `結帳` / `發票` / `打單`
 - `token 收據` / `AI 用量帳單` / `把這次對話打成收據`
 - Daily bill: `daily usage` / `today's bill` / `今日用咗幾多 token` / `全日用量單`
+- All-time bill: `all-time usage` / `全機歷史用量`
 
-Examples:
+### Run Directly (without Claude)
+
+Once installed, you can run it straight from the terminal — no Claude needed:
 
 ```bash
-# Single conversation (text receipt + printable HTML opened in your system browser)
-python3 scripts/check_please.py --agent-tool claude-code --chat-reply
+# Install (once)
+python3 -m pip install -e /path/to/check-please
 
-# Whole-day bill: every session today, one line item per model
-python3 scripts/check_please.py --agent-tool claude-code --scope today --chat-reply
+# Latest turn
+python -m check_please.cli --agent-tool claude-code
 
-# Languages: en | zh-TW | cantonese
-python3 scripts/check_please.py --agent-tool claude-code --language cantonese --chat-reply
+# Whole session
+python -m check_please.cli --agent-tool claude-code --scope session --language en
 
-# Printable HTML straight to the browser
-python3 scripts/check_please.py --agent-tool claude-code --write-html ./receipt.html --open-html
+# Today's bill
+python -m check_please.cli --agent-tool claude-code --scope today --language en
+
+# All-time bill (every session ever recorded on this machine)
+python -m check_please.cli --agent-tool claude-code --scope all-time --language en
+
+# Output HTML and open in browser
+python -m check_please.cli --agent-tool claude-code --language en --write-html ./receipt.html --open-html
+```
+
+Or via `scripts/check_please.py`:
+
+```bash
+python3 scripts/check_please.py --agent-tool claude-code --scope all-time --language en --chat-reply
 ```
 
 ## HTML Preview
@@ -116,6 +132,20 @@ The HTML receipt is a self-contained page styled like a thermal printer:
 - The host logo is replaced by a `DAILY TOTAL` masthead, and the summary shows the session count.
 - Cross-midnight sessions only count messages stamped today (Codex logs are session-cumulative and attributed by last-event date).
 
+## All-Time Bill
+
+`--scope all-time` aggregates every session ever recorded on this machine, regardless of date:
+
+- One line item per model; supported for claude-code, codex, and opencode.
+- The receipt uses an `ALL-TIME TOTAL` masthead instead of the tool logo.
+- Works the same as `--scope today` — cannot be combined with `--session`.
+
+## TWD Price
+
+The receipt automatically shows a TWD conversion row (`TWD ESTIMATE`) below the USD estimate. The exchange rate is hardcoded as **31.2** in `check_please/pricing.json` under the `twd_rate` key — edit it there to update the rate.
+
+Only USD-priced models produce a TWD row; `UNMAPPED` models are skipped.
+
 ## Auto-trigger (Claude Code)
 
 Print receipts automatically when a session ends. Both receipts are user-toggleable via `~/.claude/check-please.json`:
@@ -130,14 +160,16 @@ python3 scripts/uninstall_claude_auto_trigger.py
 
 | Software | Status | Data source | Notes |
 | --- | --- | --- | --- |
-| Claude Code | `supported now` | `~/.claude/projects` transcripts | Per-message usage incl. cache read/write splits; `latest-turn` / `session` / `today` |
-| Codex | `supported now` | Codex JSONL sessions | `token_count` events; `latest-turn` / `session` / `today` |
-| OpenCode | `supported now` | `opencode*.db` SQLite (`~/.local/share/opencode/`, `OPENCODE_DATA_DIR`) | Assistant rows' tokens + `modelID`; all scopes |
+| Claude Code | `supported now` | `~/.claude/projects` transcripts | Per-message usage incl. cache read/write splits; `latest-turn` / `session` / `today` / `all-time` |
+| Codex | `supported now` | Codex JSONL sessions | `token_count` events; `latest-turn` / `session` / `today` / `all-time` |
+| OpenCode | `supported now` | `opencode*.db` SQLite (`~/.local/share/opencode/`, `OPENCODE_DATA_DIR`) | Assistant rows' tokens + `modelID`; all scopes incl. `all-time` |
 | Cursor / Manus / Antigravity / Trae / other agents | `manual mode` | No stable local usage log | The agent passes its own usage via `--input-tokens` / `--output-tokens` with `--agent-tool <host>` for branding |
 
 ## Pricing
 
 `check_please/pricing.json` is the single pricing source, covering official Anthropic / OpenAI / Google rates (including cache pricing where published). Anything else renders as `UNMAPPED` — honesty over guesswork.
+
+It also contains `"twd_rate": 31.2`, used to compute the TWD conversion row (`TWD ESTIMATE`). Edit that value directly to change the exchange rate.
 
 ---
 

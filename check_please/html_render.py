@@ -501,7 +501,7 @@ def render_receipt_html(
     <title>{title} · check-please</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600&amp;family=Noto+Sans+TC:wght@400;500;700&amp;display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet" />
     <style>
       :root {{
         color-scheme: light;
@@ -517,9 +517,9 @@ def render_receipt_html(
         --on-accent: #18170f;
         --surface: #ffffff;
         --nav-bg: rgba(250, 249, 246, 0.88);
-        --font: 'Mona Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        --label: 'Space Grotesk', system-ui, sans-serif;
-        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        --font: 'JetBrains Mono', ui-monospace, monospace;
+        --label: 'JetBrains Mono', ui-monospace, monospace;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
         --ease: cubic-bezier(0.22, 1, 0.36, 1);
         --rule: #232323;
         --receipt-width: 80mm;

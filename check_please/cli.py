@@ -144,7 +144,7 @@ def parse_cli_language(value: str) -> str:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Render token usage as an ASCII thermal receipt.")
     parser.add_argument("--session", type=Path, help="Codex JSONL session path. Defaults to newest local session.")
-    parser.add_argument("--scope", choices=("latest-turn", "session", "today"), default="latest-turn", help="latest-turn or session bills one conversation; today aggregates every session of the current local day, broken down by model.")
+    parser.add_argument("--scope", choices=("latest-turn", "session", "today", "all-time"), default="latest-turn", help="latest-turn or session bills one conversation; today aggregates every session of the current local day; all-time aggregates every session ever recorded on this machine.")
     parser.add_argument("--width", type=int, choices=ALLOWED_WIDTHS, default=48)
     parser.add_argument("--agent-tool", choices=("auto", "codex", "claude-code", "opencode", "cursor", "manus", "antigravity", "trae", "generic"), default=None, help="Software data source and receipt logo. claude-code/codex/opencode read local logs; cursor/manus/antigravity/trae brand the receipt and expect manual token flags. When omitted, check-please uses the current runtime if it can detect one.")
     parser.add_argument("--brand", choices=("auto", "codex", "claude-code", "opencode", "cursor", "manus", "antigravity", "trae", "generic"), default=None, help="Backward-compatible logo override. Prefer --agent-tool when choosing a software data source.")

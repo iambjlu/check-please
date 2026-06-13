@@ -211,12 +211,12 @@ def infer_provider_from_model(model: str) -> str:
         return "google"
     if "deepseek" in model_lower:
         return "deepseek"
+    if "qwen" in model_lower or model_lower.startswith("mlx-community/qwen"):
+        return "alibaba"
     if "minimax" in model_lower or model_lower.startswith("m"):
         return "minimax"
     if "glm" in model_lower:
         return "zhipu"
-    if "qwen" in model_lower:
-        return "alibaba"
     if "mimo" in model_lower:
         return "xiaomi"
     return "unknown"
@@ -968,6 +968,184 @@ def load_daily_snapshot_opencode(
     return tally.to_snapshot(day, "opencode-db")
 
 
+def load_alltime_snapshot_codex(
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    tally = _DailyTally()
+    for path in iter_session_files():
+        session_meta: Dict[str, Any] = {}
+        turn_context_model: Optional[str] = None
+        token_event: Optional[Dict[str, Any]] = None
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    item_type = item.get("type")
+                    payload = item.get("payload") or {}
+                    if item_type == "session_meta" and isinstance(payload, dict):
+                        session_meta = payload
+                    if item_type == "turn_context" and isinstance(payload, dict):
+                        turn_context_model = maybe_model_from_turn_context(payload) or turn_context_model
+                    if item_type == "event_msg" and isinstance(payload, dict) and payload.get("type") == "token_count":
+                        token_event = payload
+        except OSError:
+            continue
+        if not token_event:
+            continue
+        usage = (token_event.get("info") or {}).get("total_token_usage") or {}
+        model = (
+            model_override
+            or maybe_model_from_meta(session_meta)
+            or turn_context_model
+            or "UNRECORDED"
+        )
+        provider = provider_override or session_meta.get("model_provider") or infer_provider_from_model(model)
+        tally.add_session(
+            model=str(model),
+            provider=str(provider),
+            input_tokens=as_int(usage.get("input_tokens")),
+            cached_input_tokens=as_int(usage.get("cached_input_tokens")),
+            cache_write_tokens=as_int(usage.get("cache_write_tokens")),
+            output_tokens=as_int(usage.get("output_tokens")),
+            reasoning_output_tokens=as_int(usage.get("reasoning_output_tokens")),
+            total_tokens=as_int(usage.get("total_tokens")) or None,
+            session_key=str(path),
+        )
+    snap = tally.to_snapshot(dt.date.today(), "codex-sessions")
+    snap.scope = "all-time"
+    snap.session_id = "alltime-codex"
+    return snap
+
+
+def load_alltime_snapshot_claude(
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    tally = _DailyTally()
+    for path in iter_claude_transcripts():
+        per_model: Dict[str, list[tuple[int, int, int, int]]] = {}
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    message = item.get("message")
+                    if not isinstance(message, dict):
+                        continue
+                    usage = message.get("usage")
+                    if not isinstance(usage, dict):
+                        continue
+                    raw_model = str(message.get("model") or "")
+                    counts = (
+                        as_int(usage.get("input_tokens")),
+                        as_int(usage.get("cache_read_input_tokens")),
+                        as_int(usage.get("cache_creation_input_tokens")),
+                        as_int(usage.get("output_tokens")),
+                    )
+                    if raw_model.startswith("<") or not any(counts):
+                        continue
+                    model = model_override or (raw_model.strip() or "UNRECORDED")
+                    per_model.setdefault(model, []).append(counts)
+        except OSError:
+            continue
+        for model, turns in per_model.items():
+            uncached = sum(t[0] for t in turns)
+            cached = sum(t[1] for t in turns)
+            cache_write = sum(t[2] for t in turns)
+            output = sum(t[3] for t in turns)
+            provider = provider_override or infer_provider_from_model(model)
+            tally.add_session(
+                model=model,
+                provider=str(provider),
+                input_tokens=uncached + cached + cache_write,
+                cached_input_tokens=cached,
+                cache_write_tokens=cache_write,
+                output_tokens=output,
+                session_key=str(path),
+            )
+    snap = tally.to_snapshot(dt.date.today(), "claude-transcripts")
+    snap.scope = "all-time"
+    snap.session_id = "alltime-claude"
+    return snap
+
+
+def load_alltime_snapshot_opencode(
+    model_override: Optional[str],
+    provider_override: Optional[str],
+) -> UsageSnapshot:
+    tally = _DailyTally()
+    for db_path in iter_opencode_db_files():
+        try:
+            conn = sqlite3.connect(str(db_path.resolve()), timeout=5.0)
+        except sqlite3.Error:
+            continue
+        try:
+            if not _opencode_db_has_session_message(conn):
+                continue
+            try:
+                rows = conn.execute("SELECT session_id, time_created, data FROM message").fetchall()
+            except sqlite3.Error:
+                continue
+        finally:
+            conn.close()
+        per_session: Dict[tuple[str, str], list[tuple[int, int, int, int, int]]] = {}
+        for session_id, _time_created, raw in rows:
+            if not isinstance(raw, str):
+                continue
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            tup = _assistant_tokens_from_payload(payload)
+            if tup is None:
+                continue
+            model_cell = payload.get("modelID")
+            mid = model_cell.strip() if isinstance(model_cell, str) else ""
+            per_session.setdefault((str(session_id), mid), []).append(tup)
+        for (session_id, mid), turns in per_session.items():
+            sums = [sum(t[i] for t in turns) for i in range(5)]
+            raw_model = model_override or mid or "UNRECORDED"
+            vendor_provider, slug = provider_and_slug_from_opencode_model(raw_model)
+            provider = provider_override or vendor_provider
+            tally.add_session(
+                model=slug if raw_model != "UNRECORDED" else "UNRECORDED",
+                provider=str(provider),
+                input_tokens=sums[0],
+                cached_input_tokens=sums[1],
+                cache_write_tokens=sums[2],
+                output_tokens=sums[3],
+                reasoning_output_tokens=sums[4],
+                session_key=f"{db_path}:{session_id}",
+            )
+    snap = tally.to_snapshot(dt.date.today(), "opencode-db")
+    snap.scope = "all-time"
+    snap.session_id = "alltime-opencode"
+    return snap
+
+
+def load_alltime_snapshot(agent_tool: Optional[str], args: argparse.Namespace) -> UsageSnapshot:
+    if agent_tool == "claude-code":
+        return load_alltime_snapshot_claude(args.model, args.provider)
+    if agent_tool == "codex":
+        return load_alltime_snapshot_codex(args.model, args.provider)
+    if agent_tool == "opencode":
+        return load_alltime_snapshot_opencode(args.model, args.provider)
+    if agent_tool in MANUAL_ONLY_HOSTS:
+        raise SystemExit(manual_mode_error(agent_tool))
+    raise SystemExit(
+        "All-time scope needs a single software source. "
+        "Pass --agent-tool codex, --agent-tool claude-code, or --agent-tool opencode."
+    )
+
+
 def load_daily_snapshot(agent_tool: Optional[str], args: argparse.Namespace) -> UsageSnapshot:
     day = dt.date.today()
     if agent_tool == "claude-code":
@@ -1084,6 +1262,14 @@ def resolve_snapshot(args: argparse.Namespace) -> UsageSnapshot:
                 "Drop --session, or use --scope session for a single file."
             )
         return load_daily_snapshot(requested_agent_tool(args), args)
+
+    if args.scope == "all-time":
+        if args.session:
+            raise SystemExit(
+                "--scope all-time aggregates all sessions ever recorded, so it cannot be combined with --session. "
+                "Drop --session to see all-time totals."
+            )
+        return load_alltime_snapshot(requested_agent_tool(args), args)
 
     if args.session:
         if is_claude_transcript_file(args.session):
@@ -1242,6 +1428,7 @@ def estimate_cost(snapshot: UsageSnapshot, pricing_path: Path) -> PriceEstimate:
 
     pricing = load_pricing(pricing_path)
     currency = str(pricing.get("currency", "USD")).upper()
+    twd_rate = pricing.get("twd_rate")
 
     if snapshot.model_breakdown:
         costs: list[ModelCost] = []
@@ -1275,6 +1462,7 @@ def estimate_cost(snapshot: UsageSnapshot, pricing_path: Path) -> PriceEstimate:
             return PriceEstimate(status="UNMAPPED", amount=None, breakdown=tuple(costs))
         primary_currency = currency if currency in totals else max(totals, key=lambda key: totals[key])
         single = mapped_entries[0] if len(snapshot.model_breakdown) == 1 else None
+        usd_total = totals.get("USD", totals.get(primary_currency))
         return PriceEstimate(
             status="ESTIMATE",
             amount=totals[primary_currency],
@@ -1283,6 +1471,8 @@ def estimate_cost(snapshot: UsageSnapshot, pricing_path: Path) -> PriceEstimate:
             source_url=str(single.get("source_url", "")) if single else "",
             source_checked_at=str(single.get("source_checked_at", "")) if single else "",
             rate_note=str(single.get("rate_note", "")) if single else "",
+            twd_amount=round(usd_total * twd_rate, 2) if twd_rate and usd_total is not None else None,
+            twd_rate=float(twd_rate) if twd_rate else None,
             breakdown=tuple(costs),
         )
 
@@ -1299,14 +1489,18 @@ def estimate_cost(snapshot: UsageSnapshot, pricing_path: Path) -> PriceEstimate:
         snapshot.reasoning_output_tokens,
     )
 
+    entry_currency = str(entry.get("currency", currency)).upper()
+    usd_amount = amount if entry_currency == "USD" else None
     return PriceEstimate(
         status="ESTIMATE",
         amount=amount,
         model=str(entry.get("model", snapshot.model)),
-        currency=str(entry.get("currency", currency)).upper(),
+        currency=entry_currency,
         source_url=str(entry.get("source_url", "")),
         source_checked_at=str(entry.get("source_checked_at", "")),
         rate_note=str(entry.get("rate_note", "")),
+        twd_amount=round(usd_amount * twd_rate, 2) if twd_rate and usd_amount is not None else None,
+        twd_rate=float(twd_rate) if twd_rate else None,
     )
 
 
