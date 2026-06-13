@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CC_20260613_145252_D04888 · check-please</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: light;
+        --page-bg: #faf9f6;
+        --bg-2: #f1efe8;
+        --paper: #ffffff;
+        --ink: #18170f;
+        --ink-soft: #3a382f;
+        --muted: #6f6c61;
+        --line: rgba(24, 23, 15, 0.13);
+        --accent: #c2f03a;
+        --accent-d: #a9d91f;
+        --on-accent: #18170f;
+        --surface: #ffffff;
+        --nav-bg: rgba(250, 249, 246, 0.88);
+        --font: 'JetBrains Mono', ui-monospace, monospace;
+        --label: 'JetBrains Mono', ui-monospace, monospace;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --rule: #232323;
+        --receipt-width: 80mm;
+        --pad-x: 4mm;
+        --pad-top: 7mm;
+        --pad-bottom: 6.2mm;
+        --logo-width: 24mm;
+        --logo-shell-height: 26mm;
+        --logo-label-size: 4.3mm;
+        --meta-size: 3.2mm;
+        --row-size: 3.45mm;
+        --footer-size: 3.55mm;
+        --barcode-size: 3.15mm;
+        --barcode-id-size: 3.15mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--page-bg);
+        color: var(--ink);
+        font-family: var(--font);
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        min-height: 100vh;
+        padding: 72px 0 24px;
+      }
+      .topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 16px;
+        background: var(--nav-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--line);
+      }
+      .btn-print {
+        appearance: none;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        border: 1.5px solid transparent;
+        border-radius: 13px;
+        height: 40px;
+        min-width: 89px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      @media (hover: hover) {
+        .btn-print:hover {
+          background: var(--accent-d);
+        }
+      }
+      .topbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn-ghost {
+        appearance: none;
+        background: none;
+        color: var(--ink);
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        border: 1.5px solid var(--line);
+        border-radius: 13px;
+        height: 40px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      @media (hover: hover) {
+        .btn-ghost:hover {
+          border-color: var(--ink);
+        }
+      }
+      .btn-ghost:disabled {
+        opacity: 0.5;
+        cursor: progress;
+      }
+      .lang {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        align-items: stretch;
+        position: relative;
+        height: 40px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+      }
+      .lang::before {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: calc((100% - 6px) / 3);
+        height: calc(100% - 6px);
+        background: var(--ink);
+        border-radius: 10px;
+        pointer-events: none;
+        transition: transform 0.2s var(--ease);
+      }
+      .lang[data-active="1"]::before {
+        transform: translateX(100%);
+      }
+      .lang[data-active="2"]::before {
+        transform: translateX(200%);
+      }
+      .lang button {
+        appearance: none;
+        border: 0;
+        background: none;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        padding: 0 12px;
+        color: var(--muted);
+        border-radius: 10px;
+        position: relative;
+        z-index: 1;
+        cursor: pointer;
+        transition: color 0.2s var(--ease);
+      }
+      .lang button.is-selected {
+        color: var(--page-bg);
+      }
+      .receipt-page {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px 0 28px;
+        background: var(--page-bg);
+        gap: 10px;
+      }
+      .printer {
+        position: relative;
+        z-index: 2;
+        width: min(calc(var(--receipt-width) + 18mm), calc(100vw - 16px));
+        height: 15mm;
+        border-radius: 4.5mm;
+        background: linear-gradient(180deg, #34332a 0%, #201f17 45%, #15140d 100%);
+        box-shadow: 0 10px 18px rgba(24, 23, 15, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .printer::after {
+        content: "";
+        position: absolute;
+        left: 7mm;
+        right: 7mm;
+        bottom: 2mm;
+        height: 1.3mm;
+        border-radius: 0.8mm;
+        background: #050506;
+        box-shadow: inset 0 0.5mm 0.8mm rgba(0, 0, 0, 0.9);
+      }
+      .printer-label {
+        color: #f4f2ea;
+        font-family: var(--label);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        user-select: none;
+      }
+      .printer-led {
+        position: absolute;
+        right: 5.5mm;
+        top: 50%;
+        width: 1.8mm;
+        height: 1.8mm;
+        border-radius: 50%;
+        transform: translateY(-50%);
+        background: var(--accent);
+        box-shadow: 0 0 2mm rgba(194, 240, 58, 0.85);
+        animation: led-pulse 1.2s ease-in-out infinite alternate;
+      }
+      .printer-output {
+        position: relative;
+        z-index: 3;
+        margin-top: -18px;
+        clip-path: inset(0 -64px -64px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        perspective: 1000px;
+      }
+      .printer-output::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 6px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0));
+        z-index: 2;
+        pointer-events: none;
+      }
+      .receipt {
+        width: min(var(--receipt-width), calc(100vw - 24px));
+        background: var(--paper);
+        padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+        position: relative;
+        overflow: hidden;
+        font-family: var(--mono);
+        /* Real torn edge: the zigzag is cut out of the paper (transparent),
+           and drop-shadow follows the resulting silhouette. */
+        -webkit-mask:
+          linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 16px 8px repeat-x;
+        mask:
+          linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+          conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 16px 8px repeat-x;
+        animation: printer-feed 4.6s 0.2s both;
+      }
+      .receipt::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        /* Cylindrical shading so the flat paper reads as slightly curled. */
+        background:
+          linear-gradient(90deg, rgba(24, 23, 15, 0.06), rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, 0) 85%, rgba(24, 23, 15, 0.07)),
+          linear-gradient(180deg, rgba(24, 23, 15, 0.05), rgba(255, 255, 255, 0) 7%);
+      }
+      .receipt-shell {
+        filter: drop-shadow(0 2px 4px rgba(24, 23, 15, 0.14)) drop-shadow(0 14px 28px rgba(24, 23, 15, 0.22));
+        transform-origin: 50% 0;
+        /* Gentle hanging-paper sway; starts once the feed animation has finished. */
+        animation: paper-sway 7s ease-in-out 5s infinite;
+      }
+      @keyframes paper-sway {
+        0%, 100% {
+          transform: rotateX(0deg) rotateZ(0deg);
+        }
+        30% {
+          transform: rotateX(5deg) rotateZ(0.4deg);
+        }
+        65% {
+          transform: rotateX(1.5deg) rotateZ(-0.35deg);
+        }
+      }
+      /* Save PNG: rip the receipt off the printer, let it drop, then reprint. */
+      .printer-output.is-tearing {
+        clip-path: inset(0 -64px -2000px);
+      }
+      .receipt.is-torn {
+        animation: paper-tear 1s cubic-bezier(0.45, 0.05, 0.75, 0.4) both;
+      }
+      @keyframes paper-tear {
+        0% {
+          transform: translateY(0) rotateZ(0deg);
+        }
+        14% {
+          transform: translateY(9px) rotateZ(-2.6deg);
+        }
+        28% {
+          transform: translateY(4px) rotateZ(2deg);
+        }
+        100% {
+          transform: translateY(115vh) rotateZ(-9deg);
+        }
+      }
+      @keyframes printer-feed {
+        0% {
+          transform: translateY(-101%);
+          animation-timing-function: cubic-bezier(0.4, 0.1, 0.6, 0.9);
+        }
+        70% {
+          transform: translateY(0);
+          animation-timing-function: ease-in-out;
+        }
+        81% {
+          transform: translateY(-2.2%);
+          animation-timing-function: ease-in-out;
+        }
+        90% {
+          transform: translateY(0);
+          animation-timing-function: ease-in-out;
+        }
+        96% {
+          transform: translateY(-0.6%);
+          animation-timing-function: ease-in-out;
+        }
+        100% {
+          transform: translateY(0);
+        }
+      }
+      @keyframes led-pulse {
+        from { opacity: 1; }
+        to { opacity: 0.35; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .receipt,
+        .receipt-shell,
+        .printer-led {
+          animation: none;
+        }
+      }
+      .receipt--hidden {
+        display: none;
+      }
+      .receipt-header,
+      .receipt-footer {
+        text-align: center;
+      }
+      .receipt-logo-shell {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: var(--logo-shell-height);
+      }
+      .receipt-logo {
+        display: block;
+        margin: 0;
+        white-space: pre;
+        line-height: 1.02;
+        font-size: 4.25mm;
+      }
+      .receipt-logo-image {
+        display: block;
+        width: var(--logo-width);
+        height: auto;
+        image-rendering: pixelated;
+      }
+      .receipt-logo-svg {
+        display: block;
+        width: var(--logo-width);
+        height: auto;
+        color: var(--ink);
+      }
+      .receipt-logo-svg--claude-code {
+        width: calc(var(--logo-width) - 0.8mm);
+        transform: translateX(-0.45mm);
+      }
+      .receipt-logo-image--codex,
+      .receipt-logo-image--trae {
+        width: var(--logo-width);
+        max-height: var(--logo-shell-height);
+      }
+      .receipt-logo-label {
+        margin-top: 3mm;
+        font-size: var(--logo-label-size);
+        letter-spacing: 0.08em;
+      }
+      .receipt-thanks,
+      .receipt-meta {
+        margin-top: 2.7mm;
+        font-size: var(--meta-size);
+        line-height: 1.35;
+      }
+      .receipt-meta {
+        margin-top: 0.9mm;
+      }
+      .receipt-rule {
+        border-top: 0.35mm solid var(--rule);
+        margin: 3.5mm 0;
+      }
+      .receipt-rule.strong {
+        border-top-width: 0.55mm;
+      }
+      .receipt-tip-panel {
+        width: min(var(--receipt-width), calc(100vw - 24px));
+        display: flex;
+        justify-content: center;
+        margin-top: 10px;
+      }
+      .receipt-tip-controls {
+        width: 100%;
+        padding: 14px 16px;
+        text-align: center;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+      }
+      .receipt-tip-controls,
+      .receipt-tip-controls * {
+        user-select: none;
+      }
+      .receipt-tip-summary {
+        margin-top: 2.8mm;
+      }
+      .tip-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .tip-toggle input {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 36px;
+        height: 22px;
+        margin: 0;
+        border: 1.5px solid var(--line);
+        border-radius: 999px;
+        background: var(--bg-2);
+        position: relative;
+        cursor: pointer;
+        transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+      }
+      .tip-toggle input::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background: var(--surface);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+        transition: transform 0.2s var(--ease);
+      }
+      .tip-toggle input:checked {
+        background: var(--accent);
+        border-color: var(--accent-d);
+      }
+      .tip-toggle input:checked::after {
+        transform: translateX(14px);
+      }
+      .tip-options {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .tip-options[hidden],
+      .receipt-tip-summary[hidden] {
+        display: none !important;
+      }
+      .tip-option {
+        appearance: none;
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1;
+        color: var(--muted);
+        background: var(--surface);
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 14px;
+        cursor: pointer;
+        transition: border-color 0.15s, color 0.15s, background 0.15s;
+      }
+      @media (hover: hover) {
+        .tip-option:hover {
+          border-color: var(--ink);
+          color: var(--ink);
+        }
+      }
+      .tip-option.is-selected {
+        background: var(--ink);
+        color: var(--page-bg);
+        border-color: var(--ink);
+      }
+      .receipt-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4mm;
+        align-items: baseline;
+        font-size: var(--row-size);
+        line-height: 1.32;
+      }
+      .receipt-label {
+        padding-right: 2mm;
+        min-width: 0;
+      }
+      .receipt-value {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .receipt-total {
+        font-size: calc(var(--row-size) + 0.15mm);
+      }
+      .receipt-footer {
+        margin-top: 3.2mm;
+        padding: 0 0.6mm;
+      }
+      .receipt-footer-line {
+        font-size: var(--footer-size);
+        line-height: 1.35;
+        white-space: normal;
+        overflow-wrap: break-word;
+        text-wrap: balance;
+      }
+      .receipt-barcode {
+        margin: 3.6mm 0 1.4mm;
+        white-space: pre;
+        font-size: var(--barcode-size);
+        line-height: 1;
+        overflow: hidden;
+      }
+      .receipt-barcode-id {
+        font-size: var(--barcode-id-size);
+        line-height: 1.25;
+        word-break: break-all;
+      }
+      @page {
+        size: 80mm auto;
+        margin: 0;
+      }
+      @media print {
+        body {
+          background: #fff;
+          padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .topbar,
+        .receipt-note,
+        .printer,
+        .receipt-tip-panel,
+        .receipt-tip-controls {
+          display: none;
+        }
+        .receipt-page {
+          display: block;
+          padding: 0;
+          background: transparent;
+        }
+        .printer-output {
+          display: block;
+          margin-top: 0;
+          clip-path: none;
+        }
+        .printer-output::before {
+          display: none;
+        }
+        .receipt-shell {
+          filter: none;
+          animation: none;
+        }
+        .receipt {
+          width: var(--receipt-width);
+          margin: 0 auto;
+          -webkit-mask: none;
+          mask: none;
+          animation: none;
+        }
+        .receipt::after {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="topbar">
+      <div class="topbar-left">
+        <button class="btn-print" type="button" onclick="window.print()">Print receipt</button>
+        <button class="btn-ghost" type="button" data-save-png>Save PNG</button>
+      </div>
+      <div class="lang" data-active="1">
+        <button class="language-option" type="button" data-language-button="en" aria-pressed="false">EN</button>
+        <button class="language-option is-selected" type="button" data-language-button="zh-TW" aria-pressed="true">繁中</button>
+        <button class="language-option" type="button" data-language-button="cantonese" aria-pressed="false">廣東話</button>
+      </div>
+    </nav>
+
+    <main class="receipt-page">
+      <div class="printer" aria-hidden="true">
+        <span class="printer-label">Check, Please!</span>
+        <span class="printer-led"></span>
+      </div>
+      <div class="printer-output">
+      <div class="receipt-shell">
+      <article class="receipt receipt--hidden" data-language="en">
+        <header class="receipt-header">
+          <div class="receipt-logo-shell"><svg class="receipt-logo-svg receipt-logo-svg--claude-code" viewBox="0 0 128 76" aria-hidden="true" focusable="false">
+  <g fill="currentColor" shape-rendering="crispEdges">
+    <rect x="22" y="4" width="84" height="22" />
+    <rect x="10" y="30" width="108" height="14" />
+    <rect x="24" y="44" width="80" height="14" />
+    <rect x="30" y="60" width="8" height="12" />
+    <rect x="48" y="60" width="8" height="12" />
+    <rect x="78" y="60" width="8" height="12" />
+    <rect x="96" y="60" width="8" height="12" />
+  </g>
+  <g fill="#ffffff" shape-rendering="crispEdges">
+    <rect x="38" y="12" width="10" height="14" />
+    <rect x="80" y="12" width="10" height="14" />
+  </g>
+</svg></div>
+          <div class="receipt-logo-label">ALL-TIME TOTAL</div>
+          <div class="receipt-thanks">THANK YOU FOR ALL THE CODE</div>
+          <div class="receipt-meta">RECEIPT #: CC_20260613_145252_D04888</div>
+          <div class="receipt-meta">DATE: 2026-06-13 14:52:52</div>
+        </header>
+        <div class="receipt-rule strong"></div>
+        <div class="receipt-row"><span class="receipt-label">PROVIDER</span><span class="receipt-value">ANTHROPIC/ALIBABA</span></div>
+        <div class="receipt-row"><span class="receipt-label">MODEL</span><span class="receipt-value">4 MODELS</span></div>
+        <div class="receipt-row"><span class="receipt-label">SESSIONS</span><span class="receipt-value">127</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">ITEM</span><span class="receipt-value">TOKENS</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">claude-sonnet-4-6</span><span class="receipt-value">1,363,885,429</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">422,662,083</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-27b</span><span class="receipt-value">82,893,815</span></div>
+        <div class="receipt-row"><span class="receipt-label">mlx-community/Qwen3.6-35B-A3B-4bit</span><span class="receipt-value">56,610</span></div>
+        <div class="receipt-rule strong"></div>
+        <div class="receipt-total">
+        <div class="receipt-row"><span class="receipt-label">TOTAL</span><span class="receipt-value">1,869,497,937 TOKENS</span></div>
+        </div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">claude-sonnet-4.6</span><span class="receipt-value">$381.417178</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD ESTIMATE)</span><span class="receipt-value">NT$11900.22</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">$990.510125</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD ESTIMATE)</span><span class="receipt-value">NT$30903.92</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-27b</span><span class="receipt-value">$185.307017</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD ESTIMATE)</span><span class="receipt-value">NT$5781.58</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">$0.849150</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD ESTIMATE)</span><span class="receipt-value">NT$26.49</span></div>
+        <div class="receipt-row"><span class="receipt-label">USD ESTIMATE</span><span class="receipt-value">$1558.083470</span></div>
+        <div class="receipt-row"><span class="receipt-label">TWD ESTIMATE</span><span class="receipt-value">NT$48612.20</span></div>
+        <section class="receipt-tip-summary" hidden>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span class="receipt-label">SUBTOTAL</span><span class="receipt-value" data-tip-subtotal>$1558.083470</span></div>
+          <div class="receipt-row"><span class="receipt-label" data-tip-line-label>TIP (0%)</span><span class="receipt-value" data-tip-amount></span></div>
+          <div class="receipt-row receipt-total"><span class="receipt-label">GRAND TOTAL</span><span class="receipt-value" data-tip-grand-total></span></div>
+        </section>
+        <footer class="receipt-footer">
+          <div class="receipt-rule strong"></div>
+          <div class="receipt-footer-line" data-receipt-footer>INFERENCE COMPLETED. FINANCIAL RECOVERY PENDING.</div>
+          <pre class="receipt-barcode" aria-hidden="true">||| |||  ||| | ||| ||||| | | ||</pre>
+          <div class="receipt-barcode-id">CC_20260613_145252_D04888</div>
+        </footer>
+      </article>
+      </div>
+      <div class="receipt-shell">
+      <article class="receipt" data-language="zh-TW">
+        <header class="receipt-header">
+          <div class="receipt-logo-shell"><svg class="receipt-logo-svg receipt-logo-svg--claude-code" viewBox="0 0 128 76" aria-hidden="true" focusable="false">
+  <g fill="currentColor" shape-rendering="crispEdges">
+    <rect x="22" y="4" width="84" height="22" />
+    <rect x="10" y="30" width="108" height="14" />
+    <rect x="24" y="44" width="80" height="14" />
+    <rect x="30" y="60" width="8" height="12" />
+    <rect x="48" y="60" width="8" height="12" />
+    <rect x="78" y="60" width="8" height="12" />
+    <rect x="96" y="60" width="8" height="12" />
+  </g>
+  <g fill="#ffffff" shape-rendering="crispEdges">
+    <rect x="38" y="12" width="10" height="14" />
+    <rect x="80" y="12" width="10" height="14" />
+  </g>
+</svg></div>
+          <div class="receipt-logo-label">歷史總帳單</div>
+          <div class="receipt-thanks">感謝這台電腦上每一行 code</div>
+          <div class="receipt-meta">收據號碼: CC_20260613_145252_D04888</div>
+          <div class="receipt-meta">日期: 2026-06-13 14:52:52</div>
+        </header>
+        <div class="receipt-rule strong"></div>
+        <div class="receipt-row"><span class="receipt-label">供應商</span><span class="receipt-value">ANTHROPIC/ALIBABA</span></div>
+        <div class="receipt-row"><span class="receipt-label">模型</span><span class="receipt-value">4 個模型</span></div>
+        <div class="receipt-row"><span class="receipt-label">會話數</span><span class="receipt-value">127</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">項目</span><span class="receipt-value">TOKEN</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">claude-sonnet-4-6</span><span class="receipt-value">1,363,885,429</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">422,662,083</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-27b</span><span class="receipt-value">82,893,815</span></div>
+        <div class="receipt-row"><span class="receipt-label">mlx-community/Qwen3.6-35B-A3B-4bit</span><span class="receipt-value">56,610</span></div>
+        <div class="receipt-rule strong"></div>
+        <div class="receipt-total">
+        <div class="receipt-row"><span class="receipt-label">總計</span><span class="receipt-value">1,869,497,937 Tokens</span></div>
+        </div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">claude-sonnet-4.6</span><span class="receipt-value">$381.417178</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 預估)</span><span class="receipt-value">NT$11900.22</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">$990.510125</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 預估)</span><span class="receipt-value">NT$30903.92</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-27b</span><span class="receipt-value">$185.307017</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 預估)</span><span class="receipt-value">NT$5781.58</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">$0.849150</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 預估)</span><span class="receipt-value">NT$26.49</span></div>
+        <div class="receipt-row"><span class="receipt-label">USD 預估</span><span class="receipt-value">$1558.083470</span></div>
+        <div class="receipt-row"><span class="receipt-label">TWD 預估</span><span class="receipt-value">NT$48612.20</span></div>
+        <section class="receipt-tip-summary" hidden>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span class="receipt-label">小計</span><span class="receipt-value" data-tip-subtotal>$1558.083470</span></div>
+          <div class="receipt-row"><span class="receipt-label" data-tip-line-label>小費 (0%)</span><span class="receipt-value" data-tip-amount></span></div>
+          <div class="receipt-row receipt-total"><span class="receipt-label">應付總額</span><span class="receipt-value" data-tip-grand-total></span></div>
+        </section>
+        <footer class="receipt-footer">
+          <div class="receipt-rule strong"></div>
+          <div class="receipt-footer-line" data-receipt-footer>結果出來了，但錢包還沒恢復</div>
+          <pre class="receipt-barcode" aria-hidden="true">||| |||  ||| | ||| ||||| | | ||</pre>
+          <div class="receipt-barcode-id">CC_20260613_145252_D04888</div>
+        </footer>
+      </article>
+      </div>
+      <div class="receipt-shell">
+      <article class="receipt receipt--hidden" data-language="cantonese">
+        <header class="receipt-header">
+          <div class="receipt-logo-shell"><svg class="receipt-logo-svg receipt-logo-svg--claude-code" viewBox="0 0 128 76" aria-hidden="true" focusable="false">
+  <g fill="currentColor" shape-rendering="crispEdges">
+    <rect x="22" y="4" width="84" height="22" />
+    <rect x="10" y="30" width="108" height="14" />
+    <rect x="24" y="44" width="80" height="14" />
+    <rect x="30" y="60" width="8" height="12" />
+    <rect x="48" y="60" width="8" height="12" />
+    <rect x="78" y="60" width="8" height="12" />
+    <rect x="96" y="60" width="8" height="12" />
+  </g>
+  <g fill="#ffffff" shape-rendering="crispEdges">
+    <rect x="38" y="12" width="10" height="14" />
+    <rect x="80" y="12" width="10" height="14" />
+  </g>
+</svg></div>
+          <div class="receipt-logo-label">歷史總埋單</div>
+          <div class="receipt-thanks">多謝你呢台電腦每行 code</div>
+          <div class="receipt-meta">單號: CC_20260613_145252_D04888</div>
+          <div class="receipt-meta">日期: 2026-06-13 14:52:52</div>
+        </header>
+        <div class="receipt-rule strong"></div>
+        <div class="receipt-row"><span class="receipt-label">供應商</span><span class="receipt-value">ANTHROPIC/ALIBABA</span></div>
+        <div class="receipt-row"><span class="receipt-label">模型</span><span class="receipt-value">4 個模型</span></div>
+        <div class="receipt-row"><span class="receipt-label">傾咗幾多場</span><span class="receipt-value">127</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">項目</span><span class="receipt-value">TOKEN</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">claude-sonnet-4-6</span><span class="receipt-value">1,363,885,429</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">422,662,083</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-27b</span><span class="receipt-value">82,893,815</span></div>
+        <div class="receipt-row"><span class="receipt-label">mlx-community/Qwen3.6-35B-A3B-4bit</span><span class="receipt-value">56,610</span></div>
+        <div class="receipt-rule strong"></div>
+        <div class="receipt-total">
+        <div class="receipt-row"><span class="receipt-label">總數</span><span class="receipt-value">1,869,497,937 Tokens</span></div>
+        </div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span class="receipt-label">claude-sonnet-4.6</span><span class="receipt-value">$381.417178</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 估算)</span><span class="receipt-value">NT$11900.22</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">$990.510125</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 估算)</span><span class="receipt-value">NT$30903.92</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-27b</span><span class="receipt-value">$185.307017</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 估算)</span><span class="receipt-value">NT$5781.58</span></div>
+        <div class="receipt-row"><span class="receipt-label">qwen/qwen3.6-35b-a3b</span><span class="receipt-value">$0.849150</span></div>
+        <div class="receipt-row"><span class="receipt-label">  (TWD 估算)</span><span class="receipt-value">NT$26.49</span></div>
+        <div class="receipt-row"><span class="receipt-label">USD 估算</span><span class="receipt-value">$1558.083470</span></div>
+        <div class="receipt-row"><span class="receipt-label">TWD 估算</span><span class="receipt-value">NT$48612.20</span></div>
+        <section class="receipt-tip-summary" hidden>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span class="receipt-label">小計</span><span class="receipt-value" data-tip-subtotal>$1558.083470</span></div>
+          <div class="receipt-row"><span class="receipt-label" data-tip-line-label>貼士 (0%)</span><span class="receipt-value" data-tip-amount></span></div>
+          <div class="receipt-row receipt-total"><span class="receipt-label">埋單總數</span><span class="receipt-value" data-tip-grand-total></span></div>
+        </section>
+        <footer class="receipt-footer">
+          <div class="receipt-rule strong"></div>
+          <div class="receipt-footer-line" data-receipt-footer>放工唔係放工，係換個地方返工</div>
+          <pre class="receipt-barcode" aria-hidden="true">||| |||  ||| | ||| ||||| | | ||</pre>
+          <div class="receipt-barcode-id">CC_20260613_145252_D04888</div>
+        </footer>
+      </article>
+      </div>
+
+      </div>
+      <section class="receipt-tip-panel">
+        <section class="receipt-tip-controls">
+          <label class="tip-toggle">
+            <input id="tip-toggle" type="checkbox" />
+            <span id="tip-toggle-label">加一點小費</span>
+          </label>
+          <div class="tip-options" id="tip-options" hidden>
+            <button class="tip-option" type="button" data-tip-percent="15">15%</button>
+            <button class="tip-option" type="button" data-tip-percent="18">18%</button>
+            <button class="tip-option" type="button" data-tip-percent="20">20%</button>
+            <button class="tip-option" type="button" data-tip-percent="25">25%</button>
+          </div>
+        </section>
+      </section>
+
+    </main>
+    <script id="tip-config" type="application/json">{"defaultLanguage": "zh-TW", "uiLabels": {"en": {"toggle": "Add tip", "subtotal": "SUBTOTAL", "tip": "TIP", "grand_total": "GRAND TOTAL", "language_button": "EN"}, "zh-TW": {"toggle": "加一點小費", "subtotal": "小計", "tip": "小費", "grand_total": "應付總額", "language_button": "繁中"}, "cantonese": {"toggle": "加少少貼士", "subtotal": "小計", "tip": "貼士", "grand_total": "埋單總數", "language_button": "廣東話"}}, "tip": {"en": {"language": "en", "defaultFooter": "INFERENCE COMPLETED. FINANCIAL RECOVERY PENDING.", "subtotal": "$1558.083470", "subtotalLabel": "SUBTOTAL", "tipLabel": "TIP", "grandTotalLabel": "GRAND TOTAL", "options": [{"percent": 15, "tipAmount": "$233.712521", "grandTotal": "$1791.795991", "footer": "THIS INTERACTION FEELS WARMER NOW."}, {"percent": 18, "tipAmount": "$280.455025", "grandTotal": "$1838.538495", "footer": "THIS INTERACTION FEELS WARMER NOW."}, {"percent": 20, "tipAmount": "$311.616694", "grandTotal": "$1869.700164", "footer": "YOU ARE NOW A PRIORITY HUMAN."}, {"percent": 25, "tipAmount": "$389.520868", "grandTotal": "$1947.604338", "footer": "YOU'RE THE SMARTEST HUMAN BESIDES ME."}]}, "zh-TW": {"language": "zh-TW", "defaultFooter": "結果出來了，但錢包還沒恢復", "subtotal": "$1558.083470", "subtotalLabel": "小計", "tipLabel": "小費", "grandTotalLabel": "應付總額", "options": [{"percent": 15, "tipAmount": "$233.712521", "grandTotal": "$1791.795991", "footer": "這次互動開始有點溫度"}, {"percent": 18, "tipAmount": "$280.455025", "grandTotal": "$1838.538495", "footer": "這次互動開始有點溫度"}, {"percent": 20, "tipAmount": "$311.616694", "grandTotal": "$1869.700164", "footer": "你現在算 VIP 了"}, {"percent": 25, "tipAmount": "$389.520868", "grandTotal": "$1947.604338", "footer": "除了我，你是世界上最聰明的人"}]}, "cantonese": {"language": "cantonese", "defaultFooter": "放工唔係放工，係換個地方返工", "subtotal": "$1558.083470", "subtotalLabel": "小計", "tipLabel": "貼士", "grandTotalLabel": "埋單總數", "options": [{"percent": 15, "tipAmount": "$233.712521", "grandTotal": "$1791.795991", "footer": "今次 interaction 好 warm"}, {"percent": 18, "tipAmount": "$280.455025", "grandTotal": "$1838.538495", "footer": "今次 interaction 好 warm"}, {"percent": 20, "tipAmount": "$311.616694", "grandTotal": "$1869.700164", "footer": "而家講嘢，server 都會俾多兩分面"}, {"percent": 25, "tipAmount": "$389.520868", "grandTotal": "$1947.604338", "footer": "Prompt 呀！好好味嘅 Prompt 呀！我從來未食過咁好食嘅 Prompt 㗎！"}]}}}</script>
+    <script>
+      (() => {
+        const node = document.getElementById('tip-config');
+        if (!node) return;
+        const config = JSON.parse(node.textContent || '{}');
+        let activeLanguage = config.defaultLanguage || document.documentElement.lang || 'en';
+        const toggle = document.getElementById('tip-toggle');
+        const optionsWrap = document.getElementById('tip-options');
+        const buttons = Array.from(document.querySelectorAll('[data-tip-percent]'));
+        const languageButtons = Array.from(document.querySelectorAll('[data-language-button]'));
+        const receipts = Array.from(document.querySelectorAll('.receipt[data-language]'));
+        const tipToggleLabel = document.getElementById('tip-toggle-label');
+        let selectedPercent = null;
+        const tipConfigFor = (lang) => (config.tip || {})[lang] || null;
+        const receiptFor = (lang) => document.querySelector(`.receipt[data-language="${lang}"]`);
+        const optionMapFor = (lang) => new Map(((tipConfigFor(lang) || {}).options || []).map((item) => [String(item.percent), item]));
+        const resetReceipt = (lang) => {
+          const receipt = receiptFor(lang);
+          const tipConfig = tipConfigFor(lang);
+          if (!receipt || !tipConfig) return;
+          const summary = receipt.querySelector('.receipt-tip-summary');
+          const footer = receipt.querySelector('[data-receipt-footer]');
+          const lineLabel = receipt.querySelector('[data-tip-line-label]');
+          const tipAmount = receipt.querySelector('[data-tip-amount]');
+          const grandTotal = receipt.querySelector('[data-tip-grand-total]');
+          if (footer) footer.textContent = tipConfig.defaultFooter || '';
+          if (summary) summary.hidden = true;
+          if (tipAmount) tipAmount.textContent = '';
+          if (grandTotal) grandTotal.textContent = '';
+          if (lineLabel) lineLabel.textContent = `${tipConfig.tipLabel} (0%)`;
+        };
+        const applySelectionToReceipt = (lang, percent) => {
+          const receipt = receiptFor(lang);
+          const tipConfig = tipConfigFor(lang);
+          if (!receipt || !tipConfig) return;
+          const optionMap = optionMapFor(lang);
+          const option = optionMap.get(String(percent));
+          if (!option) return;
+          const summary = receipt.querySelector('.receipt-tip-summary');
+          const footer = receipt.querySelector('[data-receipt-footer]');
+          const lineLabel = receipt.querySelector('[data-tip-line-label]');
+          const tipAmount = receipt.querySelector('[data-tip-amount]');
+          const grandTotal = receipt.querySelector('[data-tip-grand-total]');
+          if (summary) summary.hidden = false;
+          if (lineLabel) lineLabel.textContent = `${tipConfig.tipLabel} (${option.percent}%)`;
+          if (tipAmount) tipAmount.textContent = option.tipAmount;
+          if (grandTotal) grandTotal.textContent = option.grandTotal;
+          if (footer) footer.textContent = option.footer;
+        };
+        const syncVisibleState = () => {
+          receipts.forEach((receipt) => {
+            const lang = receipt.dataset.language;
+            if (!lang) return;
+            if (toggle && toggle.checked && selectedPercent) {
+              applySelectionToReceipt(lang, selectedPercent);
+            } else {
+              resetReceipt(lang);
+            }
+          });
+        };
+        const applyLanguage = (lang) => {
+          activeLanguage = lang;
+          document.documentElement.lang = lang;
+          receipts.forEach((receipt) => {
+            const active = receipt.dataset.language === lang;
+            receipt.classList.toggle('receipt--hidden', !active);
+          });
+          languageButtons.forEach((button) => {
+            const active = button.dataset.languageButton === lang;
+            button.classList.toggle('is-selected', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+          });
+          const langWrap = document.querySelector('.lang');
+          const langIndex = languageButtons.findIndex((button) => button.dataset.languageButton === lang);
+          if (langWrap && langIndex >= 0) langWrap.dataset.active = String(langIndex);
+          if (tipToggleLabel && config.uiLabels && config.uiLabels[lang]) {
+            tipToggleLabel.textContent = config.uiLabels[lang].toggle;
+          }
+        };
+        buttons.forEach((button) => {
+          button.setAttribute('aria-pressed', 'false');
+          button.addEventListener('click', () => {
+            selectedPercent = button.dataset.tipPercent;
+            buttons.forEach((candidate) => {
+              const active = candidate.dataset.tipPercent === selectedPercent;
+              candidate.classList.toggle('is-selected', active);
+              candidate.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            syncVisibleState();
+          });
+        });
+        languageButtons.forEach((button) => {
+          button.addEventListener('click', () => applyLanguage(button.dataset.languageButton));
+        });
+        if (toggle) {
+          toggle.addEventListener('change', () => {
+            const enabled = !!toggle.checked;
+            if (optionsWrap) optionsWrap.hidden = !enabled;
+            if (!enabled) {
+              selectedPercent = null;
+              buttons.forEach((candidate) => {
+                candidate.classList.remove('is-selected');
+                candidate.setAttribute('aria-pressed', 'false');
+              });
+            }
+            syncVisibleState();
+          });
+        }
+        const pngButton = document.querySelector('[data-save-png]');
+        const saveReceiptPng = () => {
+          const receipt = document.querySelector('.receipt:not(.receipt--hidden)');
+          if (!receipt) return;
+          const pad = 48;
+          const width = receipt.offsetWidth + pad * 2;
+          const height = receipt.offsetHeight + pad * 2;
+          const xhtmlNS = 'http://www.w3.org/1999/xhtml';
+          const svgNS = 'http://www.w3.org/2000/svg';
+          const clone = receipt.cloneNode(true);
+          clone.style.width = receipt.offsetWidth + 'px';
+          const css = Array.from(document.querySelectorAll('style')).map((node) => node.textContent).join('\n');
+          const stage = document.createElementNS(xhtmlNS, 'div');
+          stage.setAttribute('class', 'png-stage');
+          const shell = document.createElementNS(xhtmlNS, 'div');
+          shell.setAttribute('class', 'receipt-shell');
+          const stageStyle = document.createElementNS(xhtmlNS, 'style');
+          stageStyle.textContent = css + '\n.png-stage{margin:0;padding:' + pad + 'px;background:#faf9f6;}' +
+            '\n.png-stage .receipt{animation:none !important;transform:none !important;margin:0;}' +
+            '\n.png-stage .receipt-shell{animation:none !important;transform:none !important;}';
+          stage.appendChild(stageStyle);
+          shell.appendChild(clone);
+          stage.appendChild(shell);
+          const svg = document.createElementNS(svgNS, 'svg');
+          svg.setAttribute('width', String(width));
+          svg.setAttribute('height', String(height));
+          const fo = document.createElementNS(svgNS, 'foreignObject');
+          fo.setAttribute('width', '100%');
+          fo.setAttribute('height', '100%');
+          fo.appendChild(stage);
+          svg.appendChild(fo);
+          const markup = new XMLSerializer().serializeToString(svg);
+          if (pngButton) pngButton.disabled = true;
+          const output = document.querySelector('.printer-output');
+          receipt.classList.add('is-torn');
+          if (output) output.classList.add('is-tearing');
+          const reprint = () => {
+            receipt.classList.remove('is-torn');
+            if (output) output.classList.remove('is-tearing');
+            receipt.style.animation = 'none';
+            void receipt.offsetWidth;
+            receipt.style.animation = '';
+            if (pngButton) pngButton.disabled = false;
+          };
+          setTimeout(reprint, 1150);
+          const img = new Image();
+          img.onload = () => {
+            const scale = 3;
+            const canvas = document.createElement('canvas');
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
+            ctx.drawImage(img, 0, 0);
+            const url = canvas.toDataURL('image/png');
+            window.__lastReceiptPng = url;
+            const link = document.createElement('a');
+            link.download = (document.title.split(' ')[0] || 'check-please') + '.png';
+            link.href = url;
+            link.click();
+          };
+          img.onerror = () => {
+            alert('PNG export failed in this browser; use Print receipt instead.');
+          };
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
+        };
+        if (pngButton) pngButton.addEventListener('click', saveReceiptPng);
+        applyLanguage(activeLanguage);
+        syncVisibleState();
+      })();
+    </script>
+
+  </body>
+</html>
+
