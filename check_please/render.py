@@ -707,10 +707,16 @@ def render_receipt(
 
 
 def print_receipt(text: str, stream: bool, delay: float) -> None:
+    width = max((len(line) for line in text.splitlines()), default=48)
+    border = "─" * width
     if not stream:
+        print(f"\n{border}")
         print(text)
+        print(f"{border}\n")
         return
+    print(f"\n{border}")
     for line in text.splitlines():
         print(line, flush=True)
         if delay > 0:
             time.sleep(delay)
+    print(f"{border}\n")
