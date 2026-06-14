@@ -671,10 +671,7 @@ def render_receipt(
     view = build_receipt_view(snapshot, estimate, width, agent_tool, footer, footer_tone, conversation_hint, language)
     receipt = Receipt(width, view.language)
 
-    if snapshot.scope == "today":
-        receipt.center(view.logo_label)
-    else:
-        add_logo(receipt, agent_tool, view.language)
+    add_logo(receipt, agent_tool, view.language)
     receipt.blank()
     receipt.center(view.thanks_line)
     receipt.center(view.receipt_id_line)
