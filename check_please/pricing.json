@@ -698,12 +698,12 @@
     },
     {
       "provider": "alibaba",
-      "model": "qwen/qwen3.6-27b",
+      "model": "qwen/qwen3.6-27b-4bit",
       "aliases": [
-        "qwen/qwen3.6-27b",
-        "qwen3.6-27b",
-        "qwen 3.6 27b",
-        "Qwen3.6-27B"
+        "qwen/qwen3.6-27b-4bit",
+        "qwen3.6-27b-4bit",
+        "qwen 3.6 27b 4bit",
+        "Qwen3.6-27B-4bit"
       ],
       "input_per_million": 3.0,
       "cached_input_per_million": 0.3,
@@ -715,12 +715,29 @@
       "provider": "alibaba",
       "model": "qwen/qwen3.6-35b-a3b",
       "aliases": [
-        "qwen/qwen3.6-35b-a3b",
-        "qwen3.6-35b-a3b",
-        "qwen 3.6 35b a3b",
+        "qwen/qwen3.6-35b-a3b-4bit",
+        "qwen3.6-35b-a3b-4bit",
+        "qwen 3.6 35b a3b 4bit",
         "mlx-community/Qwen3.6-35B-A3B-4bit",
         "mlx-community/qwen3.6-35b-a3b-4bit",
         "Qwen3.6-35B-A3B-4bit"
+      ],
+      "input_per_million": 3.0,
+      "cached_input_per_million": 0.3,
+      "output_per_million": 15.0,
+      "source_url": "",
+      "source_checked_at": "2026-06-13"
+    },
+    {
+      "provider": "alibaba",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "aliases": [
+        "qwen/qwen3.6-35b-a3b-6bit",
+        "qwen3.6-35b-a3b-6bit",
+        "qwen 3.6 35b a3b 6bit",
+        "mlx-community/Qwen3.6-35B-A3B-6bit",
+        "mlx-community/qwen3.6-35b-a3b-6bit",
+        "Qwen3.6-35B-A3B-6bit"
       ],
       "input_per_million": 3.0,
       "cached_input_per_million": 0.3,
